@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Aonami Echo — Sign In</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --navy: #0B1F3A;
+  --saffron: #FF7A1A;
+  --border: #D8DCE3;
+  --text: #1A1A1A;
+  --muted: #6A7585;
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'IBM Plex Sans', sans-serif;
+}
+html, body {
+  height: 100%;
+  font-family: var(--sans);
+  background: #F8F8F6;
+  color: var(--text);
+  font-size: 13px;
+}
+
+/* Subtle ruled-paper background — 1px lines every 8px */
+body {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 7px,
+    #E8E8E5 7px,
+    #E8E8E5 8px
+  );
+  background-attachment: fixed;
+}
+
+.page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  gap: 0;
+}
+
+/* ── CARD ── */
+.card {
+  width: 100%;
+  max-width: 480px;
+  background: #FFFFFF;
+  border: 1px solid #D0D5DC;
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(11,31,58,0.06), 0 4px 16px rgba(11,31,58,0.05);
+  padding: 40px 44px 36px;
+}
+
+/* ── EMBLEM + WORDMARK ── */
+.brand-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 28px;
+  gap: 0;
+}
+.emblem {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  margin-bottom: 16px;
+}
+.product-name {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--navy);
+  letter-spacing: 0.01em;
+  text-align: center;
+  line-height: 1.2;
+}
+.product-name-hi {
+  font-size: 13px;
+  color: #8A95A3;
+  margin-top: 2px;
+  text-align: center;
+  font-weight: 400;
+}
+.product-subtitle {
+  font-size: 11px;
+  color: #8A95A3;
+  margin-top: 8px;
+  text-align: center;
+  line-height: 1.5;
+  max-width: 340px;
+  letter-spacing: 0.01em;
+}
+
+/* Divider */
+.divider {
+  width: 100%;
+  height: 1px;
+  background: #EAECEF;
+  margin: 0 0 24px;
+}
+
+/* ── FORM ── */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+.form-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #4A5568;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.form-label-hi {
+  font-size: 9.5px;
+  color: #B0BACA;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  margin-left: 4px;
+}
+.form-input {
+  width: 100%;
+  padding: 9px 12px;
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--text);
+  background: #FAFAFA;
+  border: 1px solid #D0D5DC;
+  border-radius: 4px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.form-input:focus {
+  border-color: var(--navy);
+  box-shadow: 0 0 0 3px rgba(11,31,58,0.08);
+  background: #FFFFFF;
+}
+.form-input.mono {
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+.form-input::placeholder { color: #B0BACA; }
+
+select.form-input {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236A7585'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+  cursor: pointer;
+}
+
+/* ── SUBMIT BUTTON ── */
+.btn-primary {
+  width: 100%;
+  padding: 11px 16px;
+  margin-top: 8px;
+  background: var(--navy);
+  color: #FFFFFF;
+  border: none;
+  border-radius: 4px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background 0.12s;
+}
+.btn-primary:hover { background: #132D52; }
+.btn-primary:active { background: #0A1828; }
+.btn-primary .hi {
+  font-size: 11.5px;
+  font-weight: 400;
+  opacity: 0.75;
+}
+
+/* ── BELOW BUTTON ── */
+.below-btn {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  text-align: center;
+}
+.note {
+  font-size: 10.5px;
+  color: #8A95A3;
+  line-height: 1.5;
+}
+.link {
+  color: var(--navy);
+  text-decoration: none;
+  font-weight: 500;
+}
+.link:hover { text-decoration: underline; }
+
+/* ── PAGE FOOTER ── */
+.page-footer {
+  width: 100%;
+  max-width: 480px;
+  margin-top: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 2px;
+}
+.footer-text {
+  font-size: 10px;
+  color: #A0AAB4;
+}
+
+/* ── TABLET ── */
+@media (max-width: 820px) {
+  .card {
+    max-width: 100%;
+    margin: 0 16px;
+    padding: 32px 24px 28px;
+  }
+  .page-footer {
+    max-width: 100%;
+    padding: 0 18px;
+  }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- CARD -->
+  <div class="card" role="main">
+
+    <!-- Brand block -->
+    <div class="brand-block">
+      <img src="assets/ir-emblem.svg" alt="Indian Railways emblem" class="emblem" />
+      <div class="product-name">Aonami Echo</div>
+      <div class="product-name-hi">एको</div>
+      <div class="product-subtitle">RDSO-aligned defect propagation analytics for Indian Railways</div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Form -->
+    <form id="login-form" novalidate>
+
+      <div class="form-group">
+        <label class="form-label" for="employee-id">
+          Employee ID (HRMS)<span class="form-label-hi">कर्मचारी आईडी</span>
+        </label>
+        <input
+          id="employee-id"
+          type="text"
+          class="form-input mono"
+          placeholder="e.g. 50342689"
+          autocomplete="username"
+          inputmode="numeric"
+          required
+        />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="password">
+          Password<span class="form-label-hi">पासवर्ड</span>
+        </label>
+        <input
+          id="password"
+          type="password"
+          class="form-input"
+          placeholder="••••••••"
+          autocomplete="current-password"
+          required
+        />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="division">
+          Division<span class="form-label-hi">मंडल</span>
+        </label>
+        <select id="division" class="form-input" required>
+          <option value="">— Select division —</option>
+          <option value="mumbai-cr">Mumbai — CR</option>
+          <option value="pune-cr">Pune — CR</option>
+          <option value="bhusawal-cr">Bhusawal — CR</option>
+          <option value="bangalore-swr">Bangalore — SWR</option>
+          <option value="mysuru-swr">Mysuru — SWR</option>
+          <option value="newdelhi-nr">New Delhi — NR</option>
+          <option value="lucknow-nr">Lucknow — NR</option>
+          <option value="howrah-er">Howrah — ER</option>
+          <option value="chennai-sr">Chennai — SR</option>
+        </select>
+      </div>
+
+      <button type="submit" class="btn-primary">
+        Sign in <span class="hi">/ साइन इन</span>
+      </button>
+
+    </form>
+
+    <!-- Below button -->
+    <div class="below-btn">
+      <p class="note" style="background:rgba(255,122,26,.12);border:1px dashed rgba(255,122,26,.45);border-radius:6px;padding:8px 10px;color:#0B1F3A">
+        <strong>Demo:</strong> fill in anything, pick any division — then click <em>Sign in</em>.
+      </p>
+      <p class="note">Authorised users only. Authenticated via Indian Railways HRMS.</p>
+      <p class="note">
+        <a href="https://hrms.indianrailways.gov.in" target="_blank" rel="noopener" class="link">Forgot password? Reset via HRMS portal.</a>
+        &ensp;·&ensp;
+        <a href="mailto:info@aonamitech.com" class="link">Help / सहायता</a>
+      </p>
+    </div>
+
+    <!-- TODO: 2FA via HRMS -->
+
+  </div><!-- /card -->
+
+  <!-- Page footer -->
+  <div class="page-footer">
+    <span class="footer-text">© Government of India &nbsp;·&nbsp; Ministry of Railways</span>
+    <span class="footer-text">v0.1 prototype &nbsp;·&nbsp; powered by Aonami</span>
+  </div>
+
+</div><!-- /page -->
+
+<script>
+// Restore last-used division from localStorage
+(function () {
+  const saved = localStorage.getItem('pmt_division');
+  if (saved) {
+    const sel = document.getElementById('division');
+    if (sel) sel.value = saved;
+  }
+})();
+
+document.getElementById('login-form').addEventListener('submit', function (e) {
+  e.preventDefault();
+  const division = document.getElementById('division').value;
+  if (division) {
+    localStorage.setItem('pmt_division', division);
+  }
+  // Navigate to priority queue (prototype — no validation)
+  window.location.href = 'Priority Queue.html';
+});
+
+// Enter key from any field submits
+document.querySelectorAll('.form-input').forEach(function (input) {
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      document.getElementById('login-form').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    }
+  });
+});
+</script>
+<script src="prototype-nav.js"></script>
+</body>
+</html>

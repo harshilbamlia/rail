@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+
+# Raw data files (large, not needed by Vercel)
+Data run on run/
+usfd_long.csv
+usfd_clean.csv
+usfd_defects.csv
+usfd_ingest_summary.md
+EDA_STEP1.md
+EDA_STEP2.md
+DATA_PROFILE_raw.md
+MATCHING_VALIDATION.md
+MODEL_STEP3.md
+TRIAGE_STEP4.md
+plots/
+*.pptx
+*.orig
+
+# OS
+.DS_Store
+
+# Notebooks / IDE
+.ipynb_checkpoints/
+.idea/
+.vscode/
+
+# Vercel local
+.vercel/

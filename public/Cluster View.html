@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Aonami Echo — Cluster View</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: 'IBM Plex Sans', sans-serif; background: #F0F2F5; color: #1A1A1A; font-size: 13px; }
+:root {
+  --navy: #0B1F3A; --saffron: #FF7A1A;
+  --red: #C8102E; --amber: #E5A100; --green: #1F7A4D; --slate: #506070;
+  --border: #D8DCE3; --mono: 'IBM Plex Mono', monospace;
+}
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #B0B8C4; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #8A95A3; }
+::-webkit-scrollbar-track { background: #F0F2F5; }
+.section-card { background: #FFFFFF; border: 1px solid #D8DCE3; border-radius: 4px; margin-bottom: 10px; }
+.section-header { padding: 8px 12px; border-bottom: 1px solid #EAECEF; display: flex; align-items: center; gap: 8px; }
+.sec-label { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: #8A95A3; }
+.sec-body { padding: 10px 12px; }
+.badge { display: inline-block; font-family: var(--mono); font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useRef, useEffect } = React;
+
+/* ─── API CONFIG ────────────────────────────────────────────────── */
+const API_BASE = window.location.origin;
+const api = (path) => fetch(API_BASE + path).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+
+/* ─── CLUSTER DATA (offline fallback) ──────────────────────────── */
+// Cluster CL-03: 3 defects within 2.9 m on main line KM 482.12
+// All positions relative to cluster origin (metres offset from first defect)
+const CLUSTER = {
+  id: "CL-03",
+  route: "A",
+  section: "60kg",
+  grade: "90 UTS",
+  kmBase: 482.12,    // km (decimal)
+  kmTP: "00482-12",
+  span: 2.9,         // metres
+  rule: "Para 6.3.2",
+  defectCount: 3,
+  sla24hFP: "overdue",
+  sla3dReplace: "pending",
+  replacementLength: 5.5,  // RDSO minimum fish-plated
+  replacementLengthWeld: 4.0,
+
+  defects: [
+    {
+      id: "D001", offset: 0.0, rail: "LH",
+      uic: "111-1.2", curr: "IMR", pred: "IMR",
+      fsh: 81, probe: "70°CF", gmtConsumed: 72.1,
+      uicLabel: "Transverse defect, head", escalationRule: "Para 6.3.2 cluster",
+    },
+    {
+      id: "D002", offset: 1.4, rail: "RH",
+      uic: "112-1.1", curr: "IMR", pred: "IMR",
+      fsh: 71, probe: "70°GF", gmtConsumed: 72.1,
+      uicLabel: "Horizontal split head", escalationRule: "Para 6.3.2 cluster",
+    },
+    {
+      id: "D003", offset: 2.9, rail: "LH",
+      uic: "113-2.1", curr: "OBS", pred: "IMR",
+      fsh: 48, probe: "70°CF", gmtConsumed: 72.1,
+      uicLabel: "Vertical longitudinal split", escalationRule: "Para 6.3.2 cluster — escalated from OBS",
+    },
+  ],
+
+  // Infrastructure features near cluster
+  welds: [
+    { offset: -3.2, type: "AT", label: "AT-482-09", age: "2019" },
+    { offset: 6.1,  type: "FBW", label: "FBW-482-15", age: "2021" },
+  ],
+
+  fishplatedJoints: [
+    { offset: -8.5, label: "FP-482-01" },
+  ],
+
+  // Context defects (±25 m, outside cluster window)
+  contextDefects: [
+    { offset: -12.4, rail: "RH", uic: "135-4.2", curr: "OBS", pred: "OBS", fsh: 28, probe: "37°CB" },
+    { offset: 18.7,  rail: "LH", uic: "211-3.3", curr: "OBS", pred: "OBS", fsh: 22, probe: "70°CB" },
+  ],
+};
+
+const SLEEPER_DENSITY = 1660; // per km → ~0.6m spacing
+const SLEEPER_SPACING = 1000 / SLEEPER_DENSITY; // m between sleepers ≈ 0.603
+
+/* ─── COLOUR HELPERS ────────────────────────────────────────────── */
+function clsColor(cls) {
+  if (cls === "IMR" || cls === "IMRW") return "#C8102E";
+  if (cls === "OBS" || cls === "OBSW") return "#E5A100";
+  return "#506070";
+}
+function clsStyle(cls) {
+  if (cls === "IMR" || cls === "IMRW") return { bg:"#FFF0F2", text:"#C8102E", border:"#C8102E" };
+  if (cls === "OBS" || cls === "OBSW") return { bg:"#FFF8E6", text:"#9A6600", border:"#E5A100" };
+  return { bg:"#F0FAF5", text:"#1F7A4D", border:"#1F7A4D" };
+}
+function ClassBadge({ cls }) {
+  const s = clsStyle(cls);
+  return <span className="badge" style={{ background:s.bg, color:s.text, border:`1px solid ${s.border}` }}>{cls}</span>;
+}
+
+/* ─── MAIN SCHEMATIC ─────────────────────────────────────────────── */
+// Coordinate system:
+// View window: centred on cluster, ±25m visible
+// CY_LH = y position of LH rail, CY_RH = y position of RH rail
+// x = (offset - viewOffset) * PX_PER_M + PAD_LEFT
+
+function TrackSchematic({ cluster, viewOffset, pxPerM, width, hoveredDefect, onHoverDefect }) {
+  const HEIGHT = 260;
+  const PAD_L = 40, PAD_R = 20;
+  const cw = width - PAD_L - PAD_R;
+  const CY_LH = 95;   // LH rail y
+  const CY_MID = 130; // centreline y
+  const CY_RH = 165;  // RH rail y
+  const RAIL_W = 3;
+  const SLEEPER_H = 46; // sleeper tick height (spans both rails)
+
+  const toX = (off) => PAD_L + (off - viewOffset + 25) * pxPerM;
+  const inView = (off) => {
+    const x = toX(off);
+    return x >= PAD_L - 20 && x <= width - PAD_R + 20;
+  };
+
+  // Sleeper positions: every SLEEPER_SPACING metres in view window
+  const sleepers = [];
+  const startOff = viewOffset - 25;
+  const endOff = viewOffset + 25;
+  for (let s = Math.floor(startOff / SLEEPER_SPACING) * SLEEPER_SPACING; s <= endOff; s += SLEEPER_SPACING) {
+    sleepers.push(s);
+  }
+
+  // KM tick positions (every 1 m, labels every 5 m)
+  const kmTicks = [];
+  for (let m = Math.floor(startOff); m <= Math.ceil(endOff); m++) {
+    kmTicks.push(m);
+  }
+
+  // 4m cluster window position
+  const clusterX1 = toX(0);
+  const clusterX2 = toX(cluster.span);
+
+  return (
+    <svg width={width} height={HEIGHT} style={{ display:"block", background:"#FAFBFC" }}>
+
+      {/* Background: fishplated zone */}
+      {cluster.fishplatedJoints.map((fj, i) => (
+        <rect key={i} x={toX(fj.offset) - 30} y={CY_LH - 20} width={60} height={CY_RH - CY_LH + 40}
+          fill="rgba(200,200,200,0.15)" />
+      ))}
+
+      {/* GMT band subtle tint */}
+      <rect x={PAD_L} y={CY_LH-24} width={cw} height={CY_RH-CY_LH+48} fill="rgba(11,31,58,0.03)" />
+
+      {/* 4m cluster window — saffron band */}
+      <rect x={clusterX1} y={CY_LH - 28} width={clusterX2 - clusterX1} height={CY_RH - CY_LH + 56}
+        fill="rgba(255,122,26,0.08)" stroke="#FF7A1A" strokeWidth="1.5" strokeDasharray="5,3" />
+      {/* 4m rule label */}
+      <text x={(clusterX1 + clusterX2)/2} y={CY_LH - 33} textAnchor="middle"
+        fontSize="9" fill="#FF7A1A" fontFamily="IBM Plex Sans" fontWeight="600">
+        4 m rule active — Para 6.3.2
+      </text>
+      {/* Bracket above */}
+      <path d={`M${clusterX1},${CY_LH-28} L${clusterX1},${CY_LH-38} L${clusterX2},${CY_LH-38} L${clusterX2},${CY_LH-28}`}
+        fill="none" stroke="#FF7A1A" strokeWidth="1.5" />
+      {/* Span label */}
+      <text x={(clusterX1+clusterX2)/2} y={CY_LH-42} textAnchor="middle"
+        fontSize="8.5" fill="#FF7A1A" fontFamily="IBM Plex Mono" fontWeight="600">
+        {cluster.span} m
+      </text>
+
+      {/* Replacement length indicator */}
+      <path d={`M${clusterX1 - cluster.replacementLength * pxPerM / 2},${CY_RH+30}
+        L${clusterX1 - cluster.replacementLength * pxPerM / 2},${CY_RH+35}
+        L${clusterX2 + cluster.replacementLength * pxPerM / 2},${CY_RH+35}
+        L${clusterX2 + cluster.replacementLength * pxPerM / 2},${CY_RH+30}`}
+        fill="none" stroke="#0B1F3A" strokeWidth="1.5" />
+      <text x={(clusterX1+clusterX2)/2} y={CY_RH+47} textAnchor="middle"
+        fontSize="8.5" fill="#0B1F3A" fontFamily="IBM Plex Sans">
+        Min. replacement: {cluster.replacementLength} m (fish-plated, RDSO)
+      </text>
+
+      {/* Sleepers */}
+      {sleepers.map((s, i) => {
+        if (!inView(s)) return null;
+        const x = toX(s);
+        return (
+          <line key={i} x1={x} y1={CY_LH - 14} x2={x} y2={CY_RH + 14}
+            stroke="#DDE0E5" strokeWidth="5" strokeLinecap="round" />
+        );
+      })}
+
+      {/* Centreline (ballast) */}
+      <line x1={PAD_L} y1={CY_MID} x2={width-PAD_R} y2={CY_MID}
+        stroke="#E8EAED" strokeWidth="1" strokeDasharray="3,6" />
+
+      {/* LH rail */}
+      <line x1={PAD_L} y1={CY_LH} x2={width-PAD_R} y2={CY_LH}
+        stroke="#1A2A3A" strokeWidth={RAIL_W} strokeLinecap="round" />
+      {/* RH rail */}
+      <line x1={PAD_L} y1={CY_RH} x2={width-PAD_R} y2={CY_RH}
+        stroke="#1A2A3A" strokeWidth={RAIL_W} strokeLinecap="round" />
+
+      {/* Rail labels */}
+      <text x={PAD_L - 6} y={CY_LH + 4} textAnchor="end" fontSize="8" fill="#8A95A3" fontFamily="IBM Plex Sans">LH</text>
+      <text x={PAD_L - 6} y={CY_RH + 4} textAnchor="end" fontSize="8" fill="#8A95A3" fontFamily="IBM Plex Sans">RH</text>
+
+      {/* AT/FBW weld markers */}
+      {cluster.welds.map((w, i) => {
+        if (!inView(w.offset)) return null;
+        const x = toX(w.offset);
+        const cy = w.offset < 0 || w.offset > cluster.span ? CY_MID : CY_LH;
+        const col = w.type === "AT" ? "#7A3AB0" : "#3A7AB0";
+        return (
+          <g key={i}>
+            {/* ⊕ glyph */}
+            <circle cx={x} cy={CY_MID} r={7} fill="none" stroke={col} strokeWidth="1.5" />
+            <line x1={x-7} y1={CY_MID} x2={x+7} y2={CY_MID} stroke={col} strokeWidth="1" />
+            <line x1={x} y1={CY_MID-7} x2={x} y2={CY_MID+7} stroke={col} strokeWidth="1" />
+            <text x={x} y={CY_MID - 12} textAnchor="middle" fontSize="7.5"
+              fill={col} fontFamily="IBM Plex Mono">{w.label}</text>
+            <text x={x} y={CY_MID + 18} textAnchor="middle" fontSize="7"
+              fill={col} fontFamily="IBM Plex Sans">{w.type} {w.age}</text>
+          </g>
+        );
+      })}
+
+      {/* Fishplated joint markers */}
+      {cluster.fishplatedJoints.map((fj, i) => {
+        if (!inView(fj.offset)) return null;
+        const x = toX(fj.offset);
+        return (
+          <g key={i}>
+            {/* Fish-plate glyph: two rectangles straddling centreline */}
+            <rect x={x-8} y={CY_LH-4} width={16} height={8} fill="#E0E4EA" stroke="#9AAABA" strokeWidth="1" rx={1}/>
+            <rect x={x-8} y={CY_RH-4} width={16} height={8} fill="#E0E4EA" stroke="#9AAABA" strokeWidth="1" rx={1}/>
+            <text x={x} y={CY_LH-10} textAnchor="middle" fontSize="7.5"
+              fill="#7090A0" fontFamily="IBM Plex Mono">{fj.label}</text>
+          </g>
+        );
+      })}
+
+      {/* Context defects (outside cluster, smaller) */}
+      {cluster.contextDefects.map((d, i) => {
+        if (!inView(d.offset)) return null;
+        const x = toX(d.offset);
+        const cy = d.rail === "LH" ? CY_LH : CY_RH;
+        const col = clsColor(d.curr);
+        return (
+          <g key={i} opacity={0.5}>
+            <circle cx={x} cy={cy} r={5} fill={col} />
+            <text x={x} y={cy - 8} textAnchor="middle" fontSize="7"
+              fill={col} fontFamily="IBM Plex Mono">{d.uic.split("-")[0]}</text>
+          </g>
+        );
+      })}
+
+      {/* Cluster defect pins */}
+      {cluster.defects.map((d, i) => {
+        const x = toX(d.offset);
+        const cy = d.rail === "LH" ? CY_LH : CY_RH;
+        const col = clsColor(d.curr);
+        const isHovered = hoveredDefect?.id === d.id;
+        const pinH = 52;
+        const pinDir = d.rail === "LH" ? -1 : 1; // LH pins go up, RH pins go down
+        return (
+          <g key={d.id} style={{ cursor:"pointer" }}
+            onMouseEnter={() => onHoverDefect(d)}
+            onMouseLeave={() => onHoverDefect(null)}>
+            {/* Pin stem */}
+            <line x1={x} y1={cy} x2={x} y2={cy + pinDir * pinH}
+              stroke={col} strokeWidth={isHovered ? 2 : 1.5} />
+            {/* Pin head (diamond) */}
+            <polygon
+              points={`${x},${cy + pinDir*(pinH+8)} ${x-7},${cy + pinDir*(pinH)} ${x},${cy + pinDir*(pinH-8)} ${x+7},${cy + pinDir*(pinH)}`}
+              fill={col} stroke={isHovered ? "#FFFFFF" : col} strokeWidth={isHovered ? 2 : 0}
+              opacity={0.92}
+            />
+            {/* Rail dot */}
+            <circle cx={x} cy={cy} r={5} fill={col} stroke="#FFFFFF" strokeWidth="1.5" />
+            {/* UIC label */}
+            <text x={x} y={cy + pinDir*(pinH + 20)} textAnchor="middle"
+              fontSize="9" fill={col} fontFamily="IBM Plex Mono" fontWeight="600">{d.uic}</text>
+            {/* FSH pill */}
+            <rect x={x-14} y={cy + pinDir*(pinH + 24)} width={28} height={13} fill={col} rx={2} opacity={0.9} />
+            <text x={x} y={cy + pinDir*(pinH + 34)} textAnchor="middle"
+              fontSize="8.5" fill="#FFFFFF" fontFamily="IBM Plex Mono" fontWeight="600">{d.fsh}%</text>
+            {/* Probe label */}
+            <text x={x} y={cy + pinDir*(pinH + 48)} textAnchor="middle"
+              fontSize="7.5" fill="#8A95A3" fontFamily="IBM Plex Mono">{d.probe}</text>
+          </g>
+        );
+      })}
+
+      {/* KM ruler */}
+      <line x1={PAD_L} y1={HEIGHT-28} x2={width-PAD_R} y2={HEIGHT-28} stroke="#C0C8D4" strokeWidth="1" />
+      {kmTicks.map(m => {
+        const x = toX(m);
+        if (x < PAD_L || x > width-PAD_R) return null;
+        const isMajor = m % 5 === 0;
+        return (
+          <g key={m}>
+            <line x1={x} y1={HEIGHT-28} x2={x} y2={HEIGHT - (isMajor?22:25)} stroke="#8A95A3" strokeWidth={isMajor?1.5:0.8} />
+            {isMajor && (
+              <text x={x} y={HEIGHT-14} textAnchor="middle" fontSize="8.5"
+                fill="#8A95A3" fontFamily="IBM Plex Mono">
+                +{m}m
+              </text>
+            )}
+          </g>
+        );
+      })}
+      <text x={PAD_L} y={HEIGHT-4} fontSize="8" fill="#B0BACA" fontFamily="IBM Plex Sans">
+        Offset from {cluster.kmTP}-00 (metres)
+      </text>
+    </svg>
+  );
+}
+
+/* ─── CONTEXT STRIP (±50m) ──────────────────────────────────────── */
+function ContextStrip({ cluster, mainOffset, onPan, width }) {
+  const H = 44;
+  const PAD = 16;
+  const cw = width - PAD*2;
+  const RANGE = 50; // ±50m
+  const pxPM = cw / (RANGE * 2);
+  const toX = off => PAD + (off + RANGE) * pxPM;
+
+  const allDefects = [...cluster.defects, ...cluster.contextDefects];
+
+  return (
+    <svg width={width} height={H} style={{ display:"block", background:"#F8F9FB", cursor:"pointer" }}
+      onClick={e => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const newOff = (clickX - PAD) / pxPM - RANGE;
+        onPan(newOff);
+      }}>
+      {/* Track line */}
+      <line x1={PAD} y1={H/2} x2={width-PAD} y2={H/2} stroke="#8A95A3" strokeWidth="2" />
+
+      {/* 4m cluster window */}
+      <rect x={toX(0)} y={H/2-6} width={cluster.span*pxPM} height={12}
+        fill="rgba(255,122,26,0.2)" stroke="#FF7A1A" strokeWidth="1" />
+
+      {/* Defects */}
+      {allDefects.map((d, i) => {
+        const x = toX(d.offset);
+        const col = clsColor(d.curr);
+        return <circle key={i} cx={x} cy={H/2} r={3.5} fill={col} opacity={0.8} />;
+      })}
+
+      {/* Welds */}
+      {cluster.welds.map((w, i) => {
+        const x = toX(w.offset);
+        return (
+          <g key={i}>
+            <line x1={x} y1={H/2-6} x2={x} y2={H/2+6} stroke="#7A3AB0" strokeWidth="1.5" />
+          </g>
+        );
+      })}
+
+      {/* Viewport indicator */}
+      <rect x={toX(mainOffset - 25)} y={2} width={50 * pxPM} height={H-4}
+        fill="rgba(11,31,58,0.06)" stroke="#0B1F3A" strokeWidth="1" strokeDasharray="3,2" rx={2} />
+
+      {/* KM labels */}
+      {[-40,-20,0,20,40].map(m => (
+        <text key={m} x={toX(m)} y={H-3} textAnchor="middle"
+          fontSize="7.5" fill="#B0BACA" fontFamily="IBM Plex Mono">
+          {m >= 0 ? `+${m}` : m}m
+        </text>
+      ))}
+    </svg>
+  );
+}
+
+/* ─── MAIN APP ──────────────────────────────────────────────────── */
+function App() {
+  const [CL, setCL] = useState(CLUSTER);
+  const [apiLoaded, setApiLoaded] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [clusterList, setClusterList] = useState([]);
+  const [selectedId, setSelectedId] = useState(null);
+  const [viewOffset, setViewOffset] = useState(1.45); // centre on cluster midpoint
+  const [pxPerM, setPxPerM] = useState(48);
+  const [hoveredDefect, setHoveredDefect] = useState(null);
+  const [exportMsg, setExportMsg] = useState(null);
+  const [tweaksVisible, setTweaksVisible] = useState(false);
+  const mainW = useRef(null);
+  const [canvasW, setCanvasW] = useState(700);
+
+  // Load cluster list on mount
+  useEffect(() => {
+    api("/api/clusters?limit=50").then(cls => {
+      setClusterList(cls);
+      // Check URL for ?id=
+      const params = new URLSearchParams(window.location.search);
+      const urlId = params.get("id");
+      const target = urlId ? cls.find(c=>String(c.cluster_id)===urlId) : cls[0];
+      if (target) setSelectedId(target.cluster_id);
+      else setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+
+  // Load selected cluster detail
+  useEffect(() => {
+    if (selectedId == null) return;
+    setLoading(true);
+    api("/api/cluster/" + selectedId).then(data => {
+      const cl = data.cluster;
+      const members = data.members || [];
+      const defects = members.map((m, i) => ({
+        id: m.defect_key,
+        defect_key: m.defect_key,
+        offset: m.offset_m ?? i * 1.0,
+        rail: m.rail === "RR" ? "RH" : "LH",
+        uic: m.currentClass || "OBS",
+        curr: m.currentClass || "OBS",
+        pred: m.triage_level === "IMMEDIATE" ? (m.asset_type?.includes("weld")?"IMRW":"IMR") : (m.currentClass||"OBS"),
+        fsh: m.latest_amp,
+        probe: m.probe,
+        gmtConsumed: null,
+        uicLabel: m.railway || "—",
+        escalationRule: "Para 6.3.2 cluster",
+        own_slope: m.own_slope,
+        yrs_to_80: m.yrs_to_80,
+        family: m.family,
+      }));
+      setCL({
+        id: `CL-${cl.cluster_id}`,
+        cluster_id: cl.cluster_id,
+        route: cl.section || "—",
+        section: "—",
+        grade: "—",
+        kmBase: cl.chainage_start_m ? cl.chainage_start_m / 1000 : 0,
+        kmTP: "—",
+        span: cl.span_m || 4.0,
+        rule: "Para 6.3.2",
+        defectCount: cl.n_defects || members.length,
+        sla24hFP: members.some(m=>m.sla_breach) ? "overdue" : members.some(m=>m.is_imr_level) ? "pending" : null,
+        sla3dReplace: members.some(m=>m.sla_breach) ? "overdue" : null,
+        replacementLength: (cl.span_m || 4) + 1.0,
+        replacementLengthWeld: 4.0,
+        defects,
+        welds: [],
+        fishplatedJoints: [],
+        contextDefects: [],
+        railway: cl.railway,
+        sectionName: cl.section,
+        maxAmp: cl.max_amp,
+      });
+      setApiLoaded(true);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [selectedId]);
+
+  useEffect(() => {
+    const measure = () => {
+      if (mainW.current) setCanvasW(mainW.current.clientWidth);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+
+  const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{ "showHindi": true, "pxPerM": 48 }/*EDITMODE-END*/;
+  const _tw = useTweaks(TWEAK_DEFAULTS);
+  const tweaks = (_tw && _tw.tweaks) ? _tw.tweaks : TWEAK_DEFAULTS;
+  const setTweak = (_tw && _tw.setTweak) ? _tw.setTweak : () => {};
+
+  useEffect(() => {
+    const h = e => {
+      if (e.data?.type==="__activate_edit_mode") setTweaksVisible(true);
+      if (e.data?.type==="__deactivate_edit_mode") setTweaksVisible(false);
+    };
+    window.addEventListener("message", h);
+    window.parent.postMessage({ type:"__edit_mode_available" }, "*");
+    return () => window.removeEventListener("message", h);
+  }, []);
+
+  const activePxPerM = tweaks.pxPerM || pxPerM;
+
+  function handleExport() {
+    setExportMsg(`Generating single Annexure III — Cluster ${CL.id} · ${CL.defectCount} component defects…`);
+    setTimeout(() => setExportMsg(null), 3500);
+  }
+
+  return (
+    <div style={{ display:"flex", height:"100vh", background:"#F0F2F5", overflow:"hidden" }}>
+
+      {/* LEFT NAV */}
+      <nav style={{ width:"52px", flexShrink:0, background:"#0B1F3A", display:"flex", flexDirection:"column", alignItems:"center", gap:"2px" }}>
+        <div style={{ width:"52px", height:"52px", background:"#132D52", display:"flex", alignItems:"center", justifyContent:"center", borderBottom:"1px solid #1C3F6E", flexShrink:0 }}>
+          <span style={{ fontSize:"18px", fontWeight:700, color:"#FF7A1A" }}>⌁</span>
+        </div>
+        {[{icon:"≡",label:"Queue",href:"Priority Queue.html"},{icon:"◈",label:"Map",href:"Track Map.html"},{icon:"∿",label:"Defect",href:"Defect Detail.html"},{icon:"⊞",label:"Cluster",active:true},{icon:"↑",label:"Import",href:"Inspection Run Import.html"},{icon:"□",label:"Annex",href:"Annexure III Form.html"},{icon:"⊙",label:"Zone",href:"Zone Rollup.html"},{icon:"⬡",label:"Model",href:"Model.html"}].map(({icon,label,active,href}) => (
+          <div key={label} title={label} onClick={()=>{ if (!active && href) window.location.href=href; }}
+            style={{ width:"44px", height:"44px", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:"2px", background:active?"#1C3F6E":"transparent", borderRadius:"4px", cursor:active?"default":"pointer", borderLeft:active?"2px solid #FF7A1A":"2px solid transparent" }}>
+            <span style={{ fontSize:"15px", color:active?"#FFFFFF":"#6B8BB0", lineHeight:1 }}>{icon}</span>
+            <span style={{ fontSize:"7.5px", color:active?"#FFFFFF":"#4A6480", letterSpacing:"0.05em", textTransform:"uppercase" }}>{label}</span>
+          </div>
+        ))}
+        <div style={{ marginTop:"auto", marginBottom:"8px" }}>
+          <div style={{ width:"28px", height:"28px", background:"#1C3F6E", borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"10px", fontWeight:700, color:"#FFFFFF" }}>IR</div>
+        </div>
+      </nav>
+
+      {/* MAIN */}
+      <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", minWidth:0 }}>
+
+        {/* TOP BAR */}
+        <header style={{ height:"48px", background:"#FFFFFF", borderBottom:"1px solid #D8DCE3", display:"flex", alignItems:"center", padding:"0 16px", gap:"10px", flexShrink:0 }}>
+          <div>
+            <div style={{ fontSize:"13px", fontWeight:700, color:"#0B1F3A" }}>Aonami Echo</div>
+            {tweaks.showHindi && <div style={{ fontSize:"9px", color:"#8A95A3" }}>एको</div>}
+          </div>
+          <div style={{ width:"1px", height:"24px", background:"#E5E5E5" }} />
+          {/* Breadcrumb */}
+          <div style={{ display:"flex", alignItems:"center", gap:"5px", fontSize:"11.5px" }}>
+            <a href="Priority Queue.html" style={{ color:"#8A95A3", textDecoration:"none" }}>Priority Queue</a>
+            <span style={{ color:"#C0C8D4" }}>›</span>
+            <span style={{ fontFamily:"var(--mono)", color:"#0B1F3A", fontWeight:600 }}>Cluster {CL.id}</span>
+            <span style={{ color:"#C0C8D4" }}>›</span>
+            <span style={{ fontFamily:"var(--mono)", color:"#506070", fontSize:"10.5px" }}>{CL.kmTP}-00 · {CL.defectCount} defects · {CL.span} m</span>
+          </div>
+
+          <div style={{ marginLeft:"auto", display:"flex", gap:"6px", alignItems:"center" }}>
+            {/* Cluster selector */}
+            {clusterList.length > 0 && (
+              <select value={selectedId || ""} onChange={e => setSelectedId(Number(e.target.value))}
+                style={{ padding:"3px 7px", fontSize:"10.5px", border:"1px solid #D8DCE3", borderRadius:"3px", background:"#FFF", color:"#0B1F3A", maxWidth:"280px" }}>
+                {clusterList.map(c=>(
+                  <option key={c.cluster_id} value={c.cluster_id}>
+                    CL-{c.cluster_id} · {(c.railway||"").replace(" Railway","")} · {c.section} · {c.n_defects} defects · {c.max_amp?.toFixed(0)}%FSH
+                  </option>
+                ))}
+              </select>
+            )}
+            {loading && <span style={{ fontSize:"10px", color:"#8A95A3" }}>Loading…</span>}
+            <button onClick={handleExport} style={{ padding:"5px 12px", fontSize:"11px", fontWeight:600, background:"#C8102E", color:"#FFFFFF", border:"none", borderRadius:"3px", cursor:"pointer" }}>
+              Generate Annexure III — Cluster {CL.id}
+            </button>
+            <button style={{ padding:"5px 10px", fontSize:"11px", background:"#FFFFFF", color:"#0B1F3A", border:"1px solid #C0C8D4", borderRadius:"3px", cursor:"pointer" }} onClick={()=>window.print()}>Print A4 Landscape</button>
+          </div>
+        </header>
+
+        {/* CLUSTER HEADER STRIP */}
+        <div style={{ background:"#FFF0F2", borderBottom:"2px solid #C8102E", padding:"8px 16px", flexShrink:0 }}>
+          <div style={{ display:"flex", gap:"24px", alignItems:"center", flexWrap:"wrap" }}>
+            <div>
+              <div style={{ fontSize:"9px", color:"#C8102E", textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700 }}>Active cluster — IMR</div>
+              <div style={{ fontFamily:"var(--mono)", fontSize:"17px", fontWeight:700, color:"#0B1F3A" }}>{CL.kmTP}-00 — {CL.kmTP}-{Math.round(CL.span*100).toString().padStart(2,"0")}</div>
+              {tweaks.showHindi && <div style={{ fontSize:"9px", color:"#B0BACA" }}>समूह उत्क्रमण — तत्काल हटाओ</div>}
+            </div>
+            <div style={{ width:"1px", height:"36px", background:"#F0B0B8" }} />
+            {[
+              { label:"Defects in cluster", value:`${CL.defectCount}`, accent:"#C8102E" },
+              { label:"Cluster span", value:`${CL.span} m`, accent:"#C8102E" },
+              { label:"Rule triggered", value:CL.rule, accent:"#C8102E" },
+              { label:"Rail section", value:`${CL.section} · ${CL.grade}`, accent:"#506070" },
+              { label:"Replacement (FP)", value:`≥ ${CL.replacementLength} m`, accent:"#0B1F3A" },
+              { label:"Replacement (weld)", value:`≥ ${CL.replacementLengthWeld} m`, accent:"#0B1F3A" },
+            ].map((k,i) => (
+              <div key={i}>
+                <div style={{ fontSize:"8.5px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.06em" }}>{k.label}</div>
+                <div style={{ fontFamily:"var(--mono)", fontSize:"13px", fontWeight:700, color:k.accent, marginTop:"1px" }}>{k.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* BODY: SCHEMATIC + RIGHT PANEL */}
+        <div style={{ flex:1, display:"flex", overflow:"hidden" }}>
+
+          {/* LEFT: schematic */}
+          <div ref={mainW} style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", minWidth:0 }}>
+
+            {/* Zoom controls */}
+            <div style={{ padding:"6px 14px", background:"#F8F9FB", borderBottom:"1px solid #E5E5E5", display:"flex", gap:"8px", alignItems:"center", flexShrink:0 }}>
+              <span style={{ fontSize:"9.5px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.06em" }}>Scale</span>
+              {[24, 36, 48, 64, 80].map(s => (
+                <button key={s} onClick={() => setPxPerM(s)} style={{
+                  padding:"2px 8px", fontSize:"10.5px",
+                  background: activePxPerM===s ? "#0B1F3A" : "#FFFFFF",
+                  color: activePxPerM===s ? "#FFFFFF" : "#5A6475",
+                  border:`1px solid ${activePxPerM===s?"#0B1F3A":"#D8DCE3"}`,
+                  borderRadius:"3px", cursor:"pointer",
+                  fontFamily:"var(--mono)",
+                }}>{s}px/m</button>
+              ))}
+              <div style={{ width:"1px", height:"16px", background:"#E5E5E5", marginLeft:"4px" }} />
+              <span style={{ fontSize:"9.5px", color:"#8A95A3" }}>Drag/click context strip to pan</span>
+
+              {/* Legend */}
+              <div style={{ marginLeft:"auto", display:"flex", gap:"12px", alignItems:"center" }}>
+                {[
+                  { col:"#C8102E", label:"IMR" },
+                  { col:"#E5A100", label:"OBS" },
+                  { col:"#7A3AB0", label:"AT/FBW weld" },
+                  { col:"#9AAABA", label:"Fish-plate joint" },
+                  { col:"#FF7A1A", label:"4 m window" },
+                ].map(l => (
+                  <span key={l.label} style={{ display:"flex", alignItems:"center", gap:"4px", fontSize:"9.5px", color:"#5A6475" }}>
+                    <span style={{ width:"8px", height:"8px", borderRadius:"50%", background:l.col, display:"inline-block" }} />
+                    {l.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Main canvas (scrollable horizontally if needed) */}
+            <div style={{ flex:1, overflowX:"auto", overflowY:"hidden", position:"relative" }}>
+              <TrackSchematic
+                cluster={CL}
+                viewOffset={viewOffset}
+                pxPerM={activePxPerM}
+                width={Math.max(canvasW, 600)}
+                hoveredDefect={hoveredDefect}
+                onHoverDefect={setHoveredDefect}
+              />
+            </div>
+
+            {/* Context strip */}
+            <div style={{ flexShrink:0, borderTop:"1px solid #E5E5E5" }}>
+              <div style={{ padding:"3px 14px 2px", fontSize:"9px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.06em" }}>
+                Context ± 50 m — click to pan
+              </div>
+              <ContextStrip
+                cluster={CL}
+                mainOffset={viewOffset}
+                onPan={setViewOffset}
+                width={Math.max(canvasW, 600)}
+              />
+            </div>
+          </div>
+
+          {/* RIGHT PANEL */}
+          <div style={{ width:"310px", flexShrink:0, background:"#FFFFFF", borderLeft:"1px solid #D8DCE3", display:"flex", flexDirection:"column", overflow:"hidden", minHeight:0 }}>
+            <div style={{ flex:1, overflowY:"auto", padding:"10px 12px", minHeight:0 }}>
+
+              {/* Component defects */}
+              <div className="section-card">
+                <div className="section-header">
+                  <span style={{ fontFamily:"var(--mono)", fontSize:"10px", fontWeight:700, color:"#C8102E" }}>D</span>
+                  <span className="sec-label">Component defects — {CL.defectCount} in cluster</span>
+                </div>
+                <div className="sec-body" style={{ padding:"0" }}>
+                  <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"10.5px" }}>
+                    <thead>
+                      <tr style={{ background:"#F8F9FB" }}>
+                        {["Offset","Class","→Pred","FSH","Probe","RUL→80% / Slope"].map(h => (
+                          <th key={h} style={{ padding:"5px 8px", fontSize:"8.5px", fontWeight:700, color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.05em", borderBottom:"2px solid #E0E4EA", textAlign:"left", whiteSpace:"nowrap" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {CL.defects.map((d, i) => {
+                        const isHov = hoveredDefect?.id === d.id;
+                        return (
+                          <tr key={d.id || i} style={{ background: isHov?"#F4F7FC":"transparent", borderBottom:"1px solid #F0F0F0", cursor:"pointer" }}
+                            onMouseEnter={() => setHoveredDefect(d)}
+                            onMouseLeave={() => setHoveredDefect(null)}
+                            onClick={() => { if (d.defect_key) window.location.href="Defect Detail.html?key="+encodeURIComponent(d.defect_key); }}>
+                            <td style={{ padding:"5px 8px", fontFamily:"var(--mono)", fontSize:"10px", color:"#0B1F3A", fontWeight:500 }}>
+                              +{(d.offset||0).toFixed(1)}m
+                            </td>
+                            <td style={{ padding:"5px 8px", fontFamily:"var(--mono)", fontSize:"10px" }}>
+                              <div>{d.uic}</div>
+                              <div style={{ fontSize:"8px", color:"#8A95A3" }}>{d.uicLabel ? d.uicLabel.split(",")[0] : "—"}</div>
+                            </td>
+                            <td style={{ padding:"5px 8px" }}><ClassBadge cls={d.curr} /></td>
+                            <td style={{ padding:"5px 8px" }}><ClassBadge cls={d.pred} /></td>
+                            <td style={{ padding:"5px 8px", fontFamily:"var(--mono)", fontSize:"10.5px", color: (d.fsh||0)>=60?"#C8102E":(d.fsh||0)>=30?"#A37000":"#1A1A1A" }}>{d.fsh != null ? `${Number(d.fsh).toFixed(0)}%` : "—"}</td>
+                            <td style={{ padding:"5px 8px", fontFamily:"var(--mono)", fontSize:"9.5px" }}>{d.probe}</td>
+                            <td style={{ padding:"5px 8px", fontFamily:"var(--mono)", fontSize:"9.5px", color: (d.yrs_to_80||99)<2?"#C8102E":(d.yrs_to_80||99)<5?"#E5A100":"#506070" }}>
+                              {d.yrs_to_80 != null ? `${Number(d.yrs_to_80).toFixed(1)}yr` : "—"}
+                              {d.own_slope != null && <div style={{ fontSize:"8px", color:"#8A95A3" }}>{d.own_slope>0?"+":""}{Number(d.own_slope).toFixed(2)}/GMT</div>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Escalation rationale */}
+              <div className="section-card">
+                <div className="section-header">
+                  <span className="sec-label">Cluster escalation rationale</span>
+                </div>
+                <div className="sec-body">
+                  <div style={{ padding:"8px 10px", background:"#FFF0F2", border:"1px solid #F0B0B8", borderRadius:"3px", marginBottom:"6px" }}>
+                    <div style={{ fontSize:"10px", fontWeight:700, color:"#8A0020", marginBottom:"3px" }}>Para 6.3.2 — 4 m proximity rule</div>
+                    <div style={{ fontSize:"10.5px", color:"#6A0018", lineHeight:"1.6" }}>
+                      3 defects detected within <strong>2.9 m</strong> in the run of 12 Apr 2026. Per Para 6.3.2, any 2 or more defects within 4.0 m on the same rail — or adjacent rails within the same panel — are collectively escalated to IMR/IMRW, regardless of individual amplitude. Defect D003 (OBS at 48%FSH) escalated from OBS to IMR solely by this rule.
+                    </div>
+                  </div>
+                  <div style={{ fontSize:"10px", color:"#506070", lineHeight:"1.6" }}>
+                    Single work order: one rail-piece replacement of ≥ {CL.replacementLength} m (fish-plated) or ≥ {CL.replacementLengthWeld} m (welded) covers all 3 defects. Do not raise 3 separate work orders.
+                  </div>
+                </div>
+              </div>
+
+              {/* RDSO SLA compliance */}
+              <div className="section-card">
+                <div className="section-header">
+                  <span className="sec-label">RDSO SLA compliance</span>
+                </div>
+                <div className="sec-body">
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"6px", marginBottom:"8px" }}>
+                    {[
+                      { label:"24-hr Joggled FP", labelHi:"24 घंटे", status:CL.sla24hFP },
+                      { label:"3-day Replacement", labelHi:"3 दिन", status:CL.sla3dReplace },
+                    ].map(s => {
+                      const col = s.status==="overdue"?"#C8102E":s.status==="done"?"#1F7A4D":"#A37000";
+                      const bg = s.status==="overdue"?"#FFF0F2":s.status==="done"?"#F0FAF5":"#FFFBF0";
+                      const bd = s.status==="overdue"?"#F0B0B8":s.status==="done"?"#A0D8BC":"#F0D890";
+                      return (
+                        <div key={s.label} style={{ padding:"7px 9px", background:bg, border:`1px solid ${bd}`, borderRadius:"3px" }}>
+                          <div style={{ fontSize:"8.5px", color:"#8A95A3" }}>{s.label}</div>
+                          {tweaks.showHindi && <div style={{ fontSize:"7.5px", color:"#C0CACE" }}>{s.labelHi}</div>}
+                          <div style={{ fontSize:"12px", fontWeight:700, color:col, marginTop:"2px" }}>
+                            {s.status==="overdue"?"OVERDUE":s.status==="done"?"DONE":"PENDING"}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{ fontSize:"10px", color:"#C8102E", background:"#FFF8F8", border:"1px solid #F0C0C8", borderRadius:"3px", padding:"6px 8px" }}>
+                    24-hr joggled fish plate SLA breached. File Annexure V immediately and dispatch gangs.
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Pinned actions — always visible regardless of window height */}
+            <div style={{ flexShrink:0, padding:"8px 12px", borderTop:"1px solid #E5E5E5", background:"#FAFBFC", display:"flex", flexDirection:"column", gap:"6px" }}>
+              <button onClick={handleExport} style={{ padding:"9px 12px", fontSize:"11.5px", fontWeight:700, background:"#C8102E", color:"#FFFFFF", border:"none", borderRadius:"3px", cursor:"pointer", textAlign:"left", lineHeight:"1.4" }}>
+                Generate single Annexure III<br/>
+                <span style={{ fontSize:"9.5px", fontWeight:400, opacity:0.85 }}>One work order for cluster — {CL.defectCount} component defects</span>
+              </button>
+              <div style={{ display:"flex", gap:"6px" }}>
+                <button style={{ flex:1, padding:"7px 8px", fontSize:"10.5px", background:"#FFFFFF", color:"#0B1F3A", border:"1px solid #C0C8D4", borderRadius:"3px", cursor:"pointer" }}>
+                  Open in Defect Detail
+                </button>
+                <button style={{ flex:1, padding:"7px 8px", fontSize:"10.5px", background:"#FFFFFF", color:"#0B1F3A", border:"1px solid #C0C8D4", borderRadius:"3px", cursor:"pointer" }}>
+                  Mark resolved
+                </button>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding:"6px 12px", borderTop:"1px solid #E5E5E5", background:"#F8F9FB", display:"flex", alignItems:"center", gap:"6px", flexShrink:0 }}>
+              <img src="assets/ir-emblem.svg" alt="IR" style={{ width:"16px", height:"16px", objectFit:"contain", opacity:0.5 }} />
+              <span style={{ fontSize:"9px", color:"#B0BACA" }}>Government of India · Ministry of Railways · Indian Railways</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Toast */}
+      {exportMsg && (
+        <div style={{ position:"fixed", bottom:"20px", left:"50%", transform:"translateX(-50%)", background:"#0B1F3A", color:"#FFFFFF", padding:"9px 18px", borderRadius:"4px", fontSize:"11.5px", fontWeight:500, boxShadow:"0 4px 16px rgba(0,0,0,0.25)", zIndex:1000 }}>
+          {exportMsg}
+        </div>
+      )}
+
+      {/* Tweaks */}
+      {tweaksVisible && (
+        <TweaksPanel onClose={() => { setTweaksVisible(false); window.parent.postMessage({type:"__edit_mode_dismissed"}, "*"); }}>
+          <TweakSection title="Display">
+            <TweakToggle label="Hindi labels" value={tweaks.showHindi} onChange={v => setTweak("showHindi", v)} />
+            <TweakSlider label="Scale (px/m)" min={20} max={100} step={4} value={tweaks.pxPerM || 48} onChange={v => setTweak("pxPerM", v)} />
+          </TweakSection>
+        </TweaksPanel>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+<script src="prototype-nav.js"></script>
+</body>
+</html>

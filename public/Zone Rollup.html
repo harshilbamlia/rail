@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Aonami Echo — Zone Rollup (PCE View)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: 'IBM Plex Sans', sans-serif; background: #F0F2F5; color: #1A1A1A; font-size: 13px; }
+:root {
+  --navy: #0B1F3A; --saffron: #FF7A1A;
+  --red: #C8102E; --amber: #E5A100; --green: #1F7A4D; --slate: #506070;
+  --border: #D8DCE3; --mono: 'IBM Plex Mono', monospace;
+}
+::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-thumb { background: #C0C8D4; border-radius: 3px; }
+
+/* Print */
+@media print {
+  html, body { background: white; font-size: 11px; }
+  .no-print { display: none !important; }
+  .print-page { background: white !important; border: none !important; box-shadow: none !important; padding: 0 !important; max-width: 100% !important; }
+  .section-card { break-inside: avoid; border: 1px solid #D8DCE3 !important; }
+  nav, header.topbar { display: none !important; }
+  .page-break { break-before: page; }
+  .print-header { display: flex !important; }
+}
+.print-header { display: none; }
+
+.section-card {
+  background: #FFFFFF;
+  border: 1px solid #D8DCE3;
+  border-radius: 4px;
+  margin-bottom: 16px;
+}
+.section-header {
+  padding: 9px 16px;
+  border-bottom: 1px solid #EAECEF;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sec-label {
+  font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.09em; color: #8A95A3;
+}
+.sec-body { padding: 14px 16px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useRef, useEffect } = React;
+
+/* ─── API CONFIG ────────────────────────────────────────────────── */
+const API_BASE = window.location.origin;
+const api = (path) => fetch(API_BASE + path).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+
+/* ─── MOCK DATA (kept as fallback for quarterly/confusion/top10) ── */
+const ZONES_DEFAULT = ["CR","WR","NR","ER","SR","SCR","SER","ECR","ECoR","NCR","NWR","SECR","SWR","WCR","NER","NFR"];
+const PERIODS = ["Q1 FY2026","Q2 FY2026","Q3 FY2026","Q4 FY2026","FY2025–26","Custom"];
+
+const QUARTERLY_DATA = [
+  { q:"Q1 FY25", det:12, undet:4 },
+  { q:"Q2 FY25", det:15, undet:6 },
+  { q:"Q3 FY25", det:18, undet:3 },
+  { q:"Q4 FY25", det:14, undet:5 },
+  { q:"Q1 FY26", det:11, undet:2 },
+  { q:"Q2 FY26", det:16, undet:3 },
+  { q:"Q3 FY26", det:19, undet:2 },
+  { q:"Q4 FY26", det:22, undet:1, current:true },
+];
+
+const DIVISIONS = [
+  { name:"Mumbai",   km:484,  insp:6,  imr:12, imrw:4,  fracDet:3, fracUndet:1, avgGmt:2.8, predAcc:84, annexComp:92 },
+  { name:"Pune",     km:312,  insp:4,  imr:7,  imrw:2,  fracDet:1, fracUndet:0, avgGmt:3.4, predAcc:79, annexComp:88 },
+  { name:"Bhusawal", km:628,  insp:7,  imr:18, imrw:6,  fracDet:4, fracUndet:2, avgGmt:2.1, predAcc:71, annexComp:81 },
+  { name:"Nagpur",   km:541,  insp:5,  imr:14, imrw:3,  fracDet:2, fracUndet:1, avgGmt:3.1, predAcc:76, annexComp:85 },
+  { name:"Solapur",  km:389,  insp:4,  imr:9,  imrw:2,  fracDet:1, fracUndet:0, avgGmt:4.2, predAcc:82, annexComp:90 },
+];
+
+const CONFUSION = { tp:42, fp:9, fn:8, tn:287 };
+
+const TOP10 = [
+  { div:"Mumbai",   km:"00482-12-04", uic:"111-1.2", curr:"IMR",  pred:"IMR",  action:"Work order raised",   outcome:"Pending replacement" },
+  { div:"Bhusawal", km:"01204-08-06", uic:"IMRW",    curr:"IMRW", pred:"IMRW", action:"Weld removal ordered", outcome:"Completed 20 Apr" },
+  { div:"Mumbai",   km:"00917-04-02", uic:"211-1.2", curr:"IMR",  pred:"IMR",  action:"Work order raised",   outcome:"Pending" },
+  { div:"Nagpur",   km:"00334-10-06", uic:"113-3.2", curr:"IMR",  pred:"IMR",  action:"30 kmph SR applied",  outcome:"Replacement due 28 Apr" },
+  { div:"Bhusawal", km:"01789-03-07", uic:"113-2.1", curr:"OBS",  pred:"IMR",  action:"Joggled FP placed",   outcome:"Monitoring" },
+  { div:"Pune",     km:"00543-15-01", uic:"113-1.3", curr:"OBS",  pred:"IMR",  action:"Joggled FP placed",   outcome:"Monitoring" },
+  { div:"Mumbai",   km:"00671-05-08", uic:"IMRW",    curr:"IMRW", pred:"IMRW", action:"Weld removal ordered", outcome:"Scheduled 2 May" },
+  { div:"Solapur",  km:"01123-13-02", uic:"111-4.1", curr:"GCC",  pred:"OBS",  action:"Monitoring",          outcome:"Next run 5 May" },
+  { div:"Nagpur",   km:"00892-02-07", uic:"212-1.2", curr:"OBS",  pred:"IMR",  action:"Joggled FP placed",   outcome:"Monitoring" },
+  { div:"Bhusawal", km:"01445-08-05", uic:"135-1.3", curr:"OBS",  pred:"OBS",  action:"Monitor",             outcome:"Stable" },
+];
+
+const UIC_FAMILIES = [
+  { family:"111/211", label:"Transverse (head/foot)",   count:34, prior:28, color:"#C8102E" },
+  { family:"112/212", label:"Horizontal split",         count:21, prior:19, color:"#E5A100" },
+  { family:"113/213", label:"Vertical longitudinal",    count:18, prior:16, color:"#3A5BC7" },
+  { family:"135/235", label:"Bolt-hole crack",          count:12, prior:14, color:"#506070" },
+  { family:"DFWR/O",  label:"Defective weld",           count:9,  prior:8,  color:"#7A3AB0" },
+  { family:"GCC",     label:"Gauge corner cracking",    count:7,  prior:5,  color:"#1F7A4D" },
+];
+
+/* ─── HELPERS ────────────────────────────────────────────────────── */
+function clsStyle(cls) {
+  if (cls==="IMR"||cls==="IMRW") return { bg:"#FFF0F2", text:"#C8102E", border:"#C8102E" };
+  if (cls==="OBS"||cls==="OBSW") return { bg:"#FFF8E6", text:"#9A6600", border:"#E5A100" };
+  if (cls==="GCC") return { bg:"#F0F4FF", text:"#3A5BC7", border:"#7092E0" };
+  return { bg:"#F0FAF5", text:"#1F7A4D", border:"#1F7A4D" };
+}
+function ClassBadge({ cls }) {
+  const s = clsStyle(cls);
+  return <span style={{ display:"inline-block", fontFamily:"var(--mono)", fontSize:"9.5px", fontWeight:600, padding:"1px 5px", borderRadius:"3px", background:s.bg, color:s.text, border:`1px solid ${s.border}` }}>{cls}</span>;
+}
+function Delta({ val, inverted }) {
+  const pos = inverted ? val < 0 : val > 0;
+  const neg = inverted ? val > 0 : val < 0;
+  const col = pos ? "#1F7A4D" : neg ? "#C8102E" : "#506070";
+  return <span style={{ fontFamily:"var(--mono)", fontSize:"10.5px", color:col, fontWeight:600 }}>{val > 0 ? `+${val}%` : `${val}%`}</span>;
+}
+
+/* ─── B. FRACTURE TREND CHART ───────────────────────────────────── */
+function FractureTrend({ data }) {
+  const W = 580, H = 160;
+  const PAD = { top:16, right:20, bottom:36, left:36 };
+  const cw = W - PAD.left - PAD.right;
+  const ch = H - PAD.top - PAD.bottom;
+  const maxVal = Math.max(...data.map(d => d.det + d.undet)) * 1.15;
+  const bw = cw / data.length;
+  const barW = bw * 0.55;
+  const UNDET_THRESHOLD = 4;
+
+  return (
+    <svg width={W} height={H} style={{ display:"block", maxWidth:"100%" }}>
+      {/* Y grid */}
+      {[0,5,10,15,20,25].filter(v=>v<=maxVal).map(v=>(
+        <g key={v}>
+          <line x1={PAD.left} y1={PAD.top+ch-(v/maxVal)*ch} x2={W-PAD.right} y2={PAD.top+ch-(v/maxVal)*ch} stroke="#EAECEF" strokeWidth="1" />
+          <text x={PAD.left-4} y={PAD.top+ch-(v/maxVal)*ch+4} textAnchor="end" fontSize="8.5" fill="#8A95A3" fontFamily="IBM Plex Mono">{v}</text>
+        </g>
+      ))}
+
+      {/* Bars */}
+      {data.map((d, i) => {
+        const x = PAD.left + i * bw + (bw - barW) / 2;
+        const detH = (d.det / maxVal) * ch;
+        const undetH = (d.undet / maxVal) * ch;
+        const totalH = detH + undetH;
+        const isAlert = d.undet > UNDET_THRESHOLD;
+        return (
+          <g key={i}>
+            {/* Detected (navy) */}
+            <rect x={x} y={PAD.top+ch-totalH} width={barW} height={detH}
+              fill={d.current?"#0B1F3A":"#4A6A8A"} opacity={d.current?1:0.7} />
+            {/* Undetected (red) */}
+            <rect x={x} y={PAD.top+ch-undetH} width={barW} height={undetH} fill="#C8102E" opacity={0.8} />
+            {/* Alert marker */}
+            {isAlert && (
+              <text x={x+barW/2} y={PAD.top+ch-totalH-5} textAnchor="middle"
+                fontSize="10" fill="#C8102E">▲</text>
+            )}
+            {/* Quarter label */}
+            <text x={x+barW/2} y={H-PAD.bottom+12} textAnchor="middle"
+              fontSize="8" fill={d.current?"#0B1F3A":"#8A95A3"} fontFamily="IBM Plex Mono"
+              fontWeight={d.current?"600":"400"}>{d.q}</text>
+            {/* Value on bar */}
+            {d.undet > 0 && (
+              <text x={x+barW/2} y={PAD.top+ch-totalH-8} textAnchor="middle"
+                fontSize="7.5" fill="#C8102E" fontFamily="IBM Plex Mono" fontWeight="600">{d.undet}</text>
+            )}
+          </g>
+        );
+      })}
+
+      {/* X axis */}
+      <line x1={PAD.left} y1={PAD.top+ch} x2={W-PAD.right} y2={PAD.top+ch} stroke="#D8DCE3" strokeWidth="1" />
+
+      {/* Legend */}
+      <rect x={PAD.left} y={H-10} width={10} height={7} fill="#4A6A8A" />
+      <text x={PAD.left+13} y={H-4} fontSize="8.5" fill="#5A6475" fontFamily="IBM Plex Sans">Detected by USFD</text>
+      <rect x={PAD.left+120} y={H-10} width={10} height={7} fill="#C8102E" />
+      <text x={PAD.left+133} y={H-4} fontSize="8.5" fill="#5A6475" fontFamily="IBM Plex Sans">Undetected (post-fracture)</text>
+      <text x={PAD.left+270} y={H-4} fontSize="8.5" fill="#C8102E" fontFamily="IBM Plex Sans">▲ Undetected rate above threshold</text>
+    </svg>
+  );
+}
+
+/* ─── D. CONFUSION MATRIX ───────────────────────────────────────── */
+function ConfusionMatrix({ c }) {
+  const total = c.tp + c.fp + c.fn + c.tn;
+  const cells = [
+    { label:"True Positive",  sublabel:"Predicted IMR · Actual IMR",      val:c.tp, color:"#1F7A4D", bg:"#F0FAF5", note:"Model correct — work order justified" },
+    { label:"False Positive", sublabel:"Predicted IMR · Actual still OBS", val:c.fp, color:"#E5A100", bg:"#FFFBF0", note:"Over-prediction — unnecessary early action" },
+    { label:"False Negative", sublabel:"Not predicted · Actual IMR",       val:c.fn, color:"#C8102E", bg:"#FFF0F2", note:"Missed escalation — priority for retraining" },
+    { label:"True Negative",  sublabel:"Not predicted · Actual still OBS", val:c.tn, color:"#506070", bg:"#F8F9FB", note:"Correctly held at monitor" },
+  ];
+  return (
+    <div>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px", marginBottom:"12px" }}>
+        {cells.map((cell, i) => (
+          <div key={i} style={{ padding:"12px 14px", background:cell.bg, border:`1px solid ${cell.color}30`, borderRadius:"4px", borderLeft:`4px solid ${cell.color}` }}>
+            <div style={{ fontFamily:"var(--mono)", fontSize:"28px", fontWeight:700, color:cell.color, lineHeight:1 }}>{cell.val}</div>
+            <div style={{ fontSize:"10.5px", fontWeight:700, color:cell.color, marginTop:"4px" }}>{cell.label}</div>
+            <div style={{ fontSize:"9.5px", color:"#8A95A3", marginTop:"2px" }}>{cell.sublabel}</div>
+            <div style={{ fontSize:"10px", color:"#3A4A5A", marginTop:"4px", fontStyle:"italic" }}>{cell.note}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ padding:"9px 12px", background:"#FFF0F2", border:"1px solid #F0B0B8", borderRadius:"3px", fontSize:"11px", color:"#6A0018", lineHeight:"1.6" }}>
+        <strong>False negatives ({c.fn})</strong> represent escalations the model missed; priority for retraining. Last quarter: {c.fn} false negatives, all in 113/213 vertical-longitudinal family on 52kg rail, GMT band 5–12.
+        &nbsp;&nbsp;<strong>Model accuracy: {Math.round((c.tp+c.tn)/total*100)}%</strong> · Precision: {Math.round(c.tp/(c.tp+c.fp)*100)}% · Recall: {Math.round(c.tp/(c.tp+c.fn)*100)}%
+      </div>
+    </div>
+  );
+}
+
+/* ─── F. UIC FAMILY BAR CHART ───────────────────────────────────── */
+function UicFamilyChart({ families }) {
+  const maxVal = Math.max(...families.map(f => Math.max(f.count, f.prior)));
+  const BAR_H = 14;
+  const GAP = 8;
+  const W = 440;
+  const LABEL_W = 90;
+  const CHART_W = W - LABEL_W - 60;
+
+  return (
+    <div>
+      <svg width={W} height={families.length * (BAR_H * 2 + GAP + 4) + 20} style={{ display:"block" }}>
+        {families.map((f, i) => {
+          const y = i * (BAR_H * 2 + GAP + 4) + 8;
+          const barW = (f.count / maxVal) * CHART_W;
+          const priorW = (f.prior / maxVal) * CHART_W;
+          const pct = Math.round((f.count - f.prior) / f.prior * 100);
+          return (
+            <g key={f.family}>
+              {/* Label */}
+              <text x={0} y={y + BAR_H} fontSize="9" fill="#0B1F3A" fontFamily="IBM Plex Mono" fontWeight="600">{f.family}</text>
+              <text x={0} y={y + BAR_H*2 + 2} fontSize="8" fill="#8A95A3" fontFamily="IBM Plex Sans">{f.label}</text>
+              {/* Prior period bar (grey, behind) */}
+              <rect x={LABEL_W} y={y} width={priorW} height={BAR_H*2 + 2} fill="#E8EAED" rx={2} />
+              {/* This period bar */}
+              <rect x={LABEL_W} y={y+2} width={barW} height={BAR_H*2 - 2} fill={f.color} rx={2} opacity={0.85} />
+              {/* Count */}
+              <text x={LABEL_W + barW + 5} y={y + BAR_H + 4} fontSize="10" fill={f.color} fontFamily="IBM Plex Mono" fontWeight="600">{f.count}</text>
+              {/* Delta */}
+              <text x={LABEL_W + barW + 24} y={y + BAR_H + 4} fontSize="9.5" fontFamily="IBM Plex Mono" fontWeight="600"
+                fill={pct > 0 ? "#C8102E" : pct < 0 ? "#1F7A4D" : "#506070"}>
+                {pct > 0 ? `+${pct}%` : `${pct}%`}
+              </text>
+            </g>
+          );
+        })}
+        {/* Legend */}
+        <rect x={LABEL_W} y={families.length*(BAR_H*2+GAP+4)+4} width={12} height={8} fill="#E8EAED" rx={1} />
+        <text x={LABEL_W+15} y={families.length*(BAR_H*2+GAP+4)+12} fontSize="8" fill="#8A95A3" fontFamily="IBM Plex Sans">Prior period</text>
+        <rect x={LABEL_W+90} y={families.length*(BAR_H*2+GAP+4)+4} width={12} height={8} fill="#4A6A8A" rx={1} />
+        <text x={LABEL_W+105} y={families.length*(BAR_H*2+GAP+4)+12} fontSize="8" fill="#8A95A3" fontFamily="IBM Plex Sans">This period</text>
+      </svg>
+      <div style={{ marginTop:"10px", padding:"8px 10px", background:"#EEF3FA", border:"1px solid #B0C8E8", borderRadius:"3px", fontSize:"10.5px", color:"#0B1F3A", lineHeight:"1.5" }}>
+        <strong>Insight:</strong> 111/211 transverse defects up 23% QoQ — concentrated on CC+8+2t routes on 52kg rails (Bhusawal division). 113/213 vertical-longitudinal family accounts for all 8 false-negative escalations last quarter.
+      </div>
+    </div>
+  );
+}
+
+/* ─── SECTION WRAPPER ───────────────────────────────────────────── */
+function Section({ letter, title, hi, children, pageBreak }) {
+  return (
+    <div className={`section-card${pageBreak?" page-break":""}`}>
+      <div className="section-header">
+        <span style={{ fontFamily:"var(--mono)", fontSize:"10px", fontWeight:700, color:"#FF7A1A", width:"16px" }}>{letter}</span>
+        <span className="sec-label">{title}</span>
+        {hi && <span style={{ fontSize:"9px", color:"#C0CACE" }}>{hi}</span>}
+      </div>
+      <div className="sec-body">{children}</div>
+    </div>
+  );
+}
+
+/* ─── MAIN APP ──────────────────────────────────────────────────── */
+function App() {
+  const [zone, setZone] = useState("All");
+  const [period, setPeriod] = useState("Q4 FY2026");
+  const [divFilter, setDivFilter] = useState("All");
+  const [sortCol, setSortCol] = useState("near_imr");
+  const [sortDir, setSortDir] = useState("desc");
+  const [notes, setNotes] = useState("");
+  // ── API state ──
+  const [zonesData, setZonesData] = useState([]);
+  const [stats, setStats] = useState({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([api("/api/zones"), api("/api/stats")]).then(([z, s]) => {
+      setZonesData(z);
+      setStats(s);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+
+  // Map zones data to DIVISIONS shape for the existing table
+  const DIVISIONS_LIVE = zonesData.map(z => ({
+    name: (z.railway||"—").replace(" Railway",""),
+    fullName: z.railway,
+    km: 0,
+    insp: 0,
+    imr: z.near_imr || 0,
+    imrw: 0,
+    fracDet: z.immediate || 0,
+    fracUndet: z.sla_breach || 0,
+    avgGmt: 0,
+    predAcc: 0,
+    annexComp: 0,
+    defects: z.defects || 0,
+    immediate: z.immediate || 0,
+    urgent: z.urgent || 0,
+    monitor: z.monitor || 0,
+    routine: z.routine || 0,
+    sla_breach: z.sla_breach || 0,
+    avg_amp: z.avg_amp || 0,
+    sections: z.sections || 0,
+  }));
+
+  const ZONES_LIVE = [...new Set(zonesData.map(z=>(z.railway||"").replace(" Railway","")).filter(Boolean))];
+
+  const DIVISIONS = DIVISIONS_LIVE.length ? DIVISIONS_LIVE : [];
+
+  const divs = DIVISIONS.filter(d => divFilter === "All" || d.name === divFilter);
+  const sortedKey = sortCol === "fracDet" ? "immediate" : sortCol === "fracUndet" ? "sla_breach" : sortCol;
+  const sorted = [...divs].sort((a,b) => {
+    const av = a[sortedKey] || a[sortCol] || 0;
+    const bv = b[sortedKey] || b[sortCol] || 0;
+    return sortDir === "desc" ? bv - av : av - bv;
+  });
+  function toggleSort(col) {
+    if (sortCol === col) setSortDir(d => d === "desc" ? "asc" : "desc");
+    else { setSortCol(col); setSortDir("desc"); }
+  }
+
+  const totalImr = stats.near_imr || 0;
+  const totalImrw = 0;
+  const totalFracDet = stats.by_level?.IMMEDIATE || 0;
+  const totalFracUndet = stats.sla_breaches || 0;
+  const avgPredAcc = 0;
+  const imrBacklog = totalImr + totalImrw;
+
+  const TH = ({ col, label }) => (
+    <th onClick={() => toggleSort(col)} style={{ padding:"6px 10px", textAlign:"left", fontSize:"9px", fontWeight:700, color: sortCol===col?"#0B1F3A":"#8A95A3", textTransform:"uppercase", letterSpacing:"0.06em", borderBottom:"2px solid #E0E4EA", cursor:"pointer", whiteSpace:"nowrap", userSelect:"none" }}>
+      {label}{sortCol===col ? (sortDir==="desc"?" ↓":" ↑") : ""}
+    </th>
+  );
+
+  return (
+    <div style={{ display:"flex", height:"100vh", background:"#F0F2F5", overflow:"hidden" }}>
+
+      {/* LEFT NAV */}
+      <nav className="no-print" style={{ width:"52px", flexShrink:0, background:"#0B1F3A", display:"flex", flexDirection:"column", alignItems:"center", gap:"2px" }}>
+        <div style={{ width:"52px", height:"52px", background:"#132D52", display:"flex", alignItems:"center", justifyContent:"center", borderBottom:"1px solid #1C3F6E", flexShrink:0 }}>
+          <span style={{ fontSize:"18px", fontWeight:700, color:"#FF7A1A" }}>⌁</span>
+        </div>
+        {[{icon:"≡",label:"Queue",href:"Priority Queue.html"},{icon:"◈",label:"Map",href:"Track Map.html"},{icon:"∿",label:"Defect",href:"Defect Detail.html"},{icon:"⊞",label:"Cluster",href:"Cluster View.html"},{icon:"↑",label:"Import",href:"Inspection Run Import.html"},{icon:"□",label:"Annex",href:"Annexure III Form.html"},{icon:"⊙",label:"Zone",active:true},{icon:"⬡",label:"Model",href:"Model.html"}].map(({icon,label,active,href})=>(
+          <div key={label} title={label} onClick={()=>{ if (!active && href) window.location.href=href; }}
+            style={{ width:"44px", height:"44px", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:"2px", background:active?"#1C3F6E":"transparent", borderRadius:"4px", cursor:active?"default":"pointer", borderLeft:active?"2px solid #FF7A1A":"2px solid transparent" }}>
+            <span style={{ fontSize:"15px", color:active?"#FFFFFF":"#6B8BB0", lineHeight:1 }}>{icon}</span>
+            <span style={{ fontSize:"7.5px", color:active?"#FFFFFF":"#4A6480", letterSpacing:"0.05em", textTransform:"uppercase" }}>{label}</span>
+          </div>
+        ))}
+        <div style={{ marginTop:"auto", marginBottom:"8px" }}>
+          <div style={{ width:"28px", height:"28px", background:"#1C3F6E", borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"10px", fontWeight:700, color:"#FFFFFF" }}>IR</div>
+        </div>
+      </nav>
+
+      {/* MAIN */}
+      <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", minWidth:0 }}>
+
+        {/* TOP BAR */}
+        <header className="topbar no-print" style={{ height:"48px", background:"#FFFFFF", borderBottom:"1px solid #D8DCE3", display:"flex", alignItems:"center", padding:"0 18px", gap:"10px", flexShrink:0 }}>
+          <div>
+            <div style={{ fontSize:"13px", fontWeight:700, color:"#0B1F3A" }}>Aonami Echo</div>
+            <div style={{ fontSize:"9px", color:"#8A95A3" }}>एको</div>
+          </div>
+          <div style={{ width:"1px", height:"24px", background:"#E5E5E5" }} />
+
+          {/* Zone selector */}
+          <div style={{ display:"flex", alignItems:"center", gap:"6px" }}>
+            <span style={{ fontSize:"9px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.07em" }}>Railway</span>
+            <select value={divFilter} onChange={e=>setDivFilter(e.target.value)} style={{ padding:"3px 8px", fontSize:"11.5px", fontWeight:700, border:"1px solid #D8DCE3", borderRadius:"3px", background:"#FFFFFF", color:"#0B1F3A", fontFamily:"IBM Plex Mono" }}>
+              <option value="All">All railways</option>
+              {ZONES_LIVE.map(z=><option key={z} value={z}>{z}</option>)}
+            </select>
+          </div>
+          {loading && <span style={{ fontSize:"10px", color:"#8A95A3" }}>Loading…</span>}
+
+          {/* Period */}
+          <div style={{ display:"flex", alignItems:"center", gap:"6px" }}>
+            <span style={{ fontSize:"9px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.07em" }}>Period</span>
+            <select value={period} onChange={e=>setPeriod(e.target.value)} style={{ padding:"3px 24px 3px 8px", fontSize:"11.5px", border:"1px solid #D8DCE3", borderRadius:"3px", background:"#FFFFFF", color:"#0B1F3A", fontFamily:"IBM Plex Sans", appearance:"none", backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236A7585'/%3E%3C/svg%3E\")", backgroundRepeat:"no-repeat", backgroundPosition:"right 8px center" }}>
+              {PERIODS.map(p=><option key={p}>{p}</option>)}
+            </select>
+          </div>
+
+          {/* Stats summary */}
+          {stats.defects ? (
+            <div style={{ display:"flex", gap:"12px", alignItems:"center", fontSize:"11px", color:"#506070" }}>
+              <span><span style={{ fontFamily:"var(--mono)", fontWeight:700, color:"#0B1F3A" }}>{(stats.defects||0).toLocaleString()}</span> defects</span>
+              <span>·</span>
+              <span><span style={{ fontFamily:"var(--mono)", fontWeight:700, color:"#C8102E" }}>{stats.near_imr||0}</span> near-IMR</span>
+              <span>·</span>
+              <span><span style={{ fontFamily:"var(--mono)", fontWeight:700, color:"#E5A100" }}>{stats.sla_breaches||0}</span> SLA breaches</span>
+              <span>·</span>
+              <span><span style={{ fontFamily:"var(--mono)", fontWeight:700 }}>{stats.clusters||0}</span> clusters</span>
+            </div>
+          ) : null}
+
+          <div style={{ marginLeft:"auto", display:"flex", gap:"8px", alignItems:"center" }}>
+            <button onClick={()=>window.print()} style={{ padding:"5px 12px", fontSize:"11px", fontWeight:600, background:"#0B1F3A", color:"#FFFFFF", border:"none", borderRadius:"3px", cursor:"pointer" }}>Print / Export PDF</button>
+            <div style={{ width:"1px", height:"20px", background:"#E5E5E5" }} />
+            <img src="assets/ir-emblem.svg" alt="IR" style={{ width:"24px", height:"24px", objectFit:"contain", opacity:0.8 }} />
+          </div>
+        </header>
+
+        {/* SCROLLABLE CONTENT */}
+        <div style={{ flex:1, overflowY:"auto", padding:"16px 20px" }}>
+          <div className="print-page" style={{ maxWidth:"860px", margin:"0 auto" }}>
+
+            {/* Print header (hidden on screen) */}
+            <div className="print-header" style={{ justifyContent:"space-between", alignItems:"flex-start", marginBottom:"20px", paddingBottom:"12px", borderBottom:"2px solid #0B1F3A" }}>
+              <div>
+                <div style={{ fontSize:"9px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.07em" }}>Indian Railways · {zone} Zone · USFD Defect Propagation Analytics</div>
+                <div style={{ fontSize:"18px", fontWeight:700, color:"#0B1F3A", marginTop:"4px" }}>Zone Engineering Review — {period}</div>
+                <div style={{ fontSize:"10px", color:"#8A95A3", marginTop:"2px" }}>Aonami Echo · Generated {new Date().toLocaleDateString("en-IN", {day:"numeric",month:"long",year:"numeric"})}</div>
+              </div>
+              <img src="assets/ir-emblem.svg" alt="IR" style={{ width:"56px", height:"56px", objectFit:"contain" }} />
+            </div>
+
+            {/* Screen title */}
+            <div className="no-print" style={{ marginBottom:"14px" }}>
+              <div style={{ fontSize:"11px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.07em" }}>Zone Rollup — PCE View <span style={{ fontSize:"9px", color:"#C0CACE" }}>/ क्षेत्र सारांश</span></div>
+              <div style={{ fontSize:"16px", fontWeight:700, color:"#0B1F3A", marginTop:"2px" }}>{zone} Zone · {period}</div>
+            </div>
+
+            {/* A. Headline KPIs */}
+            <Section letter="A" title="Headline KPIs" hi="मुख्य संकेतक">
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:"10px" }}>
+                {[
+                  {
+                    label:"Fractures detected by USFD", labelHi:"यूएसएफडी द्वारा पता लगाया",
+                    value: totalFracDet, delta:+18, inverted:false,
+                    sub:`vs ${totalFracDet - 4} prior period`, accent:"#1F7A4D",
+                    note:"Upward trend = more effective inspection coverage",
+                  },
+                  {
+                    label:"Fractures undetected by USFD", labelHi:"नहीं पता लगाया",
+                    value: totalFracUndet, delta:-40, inverted:true,
+                    sub:`vs ${totalFracUndet + Math.round(totalFracUndet*0.67)} prior period`, accent:"#C8102E",
+                    note:"The safety metric — lower is better",
+                    alert: totalFracUndet > 3,
+                  },
+                  {
+                    label:"Prediction accuracy (IMR)", labelHi:"अनुमान सटीकता",
+                    value:`${avgPredAcc}%`, delta:+4, inverted:false,
+                    sub:"Predicted escalations confirmed actual", accent:"#0B1F3A",
+                    note:"82% of Q4 IMR escalations were predicted in Q3",
+                  },
+                  {
+                    label:"IMR/IMRW backlog at period end", labelHi:"बकाया",
+                    value: imrBacklog, delta:-12, inverted:true,
+                    sub:"Open compliance actions", accent: imrBacklog > 20 ? "#C8102E" : "#506070",
+                    note:"Target: <10 open at period end",
+                  },
+                ].map((k,i)=>(
+                  <div key={i} style={{ padding:"12px 14px", background:"#FFFFFF", border:"1px solid #D8DCE3", borderRadius:"4px", borderTop:`3px solid ${k.accent}`, position:"relative" }}>
+                    {k.alert && <div style={{ position:"absolute", top:"8px", right:"10px", width:"8px", height:"8px", borderRadius:"50%", background:"#C8102E" }} />}
+                    <div style={{ fontSize:"9px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.07em", lineHeight:"1.3" }}>{k.label}<br/><span style={{ fontFamily:"sans-serif", fontSize:"8.5px", color:"#C0CACE", textTransform:"none", letterSpacing:0 }}>{k.labelHi}</span></div>
+                    <div style={{ fontFamily:"var(--mono)", fontSize:"26px", fontWeight:700, color:k.accent, marginTop:"6px", lineHeight:1 }}>{k.value}</div>
+                    <div style={{ display:"flex", gap:"8px", alignItems:"center", marginTop:"4px" }}>
+                      <Delta val={k.delta} inverted={k.inverted} />
+                      <span style={{ fontSize:"9.5px", color:"#8A95A3" }}>{k.sub}</span>
+                    </div>
+                    <div style={{ fontSize:"9px", color:"#8A95A3", marginTop:"5px", lineHeight:"1.4", fontStyle:"italic" }}>{k.note}</div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+
+            {/* B. Fracture trend */}
+            <Section letter="B" title="Fracture trend — 8 quarters" hi="भंग प्रवृत्ति">
+              <FractureTrend data={QUARTERLY_DATA} />
+            </Section>
+
+            {/* C. Railway comparison — real data */}
+            <Section letter="C" title="Railway comparison — real data" hi="रेलवे तुलना">
+              <div style={{ overflowX:"auto" }}>
+                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"11.5px" }}>
+                  <thead>
+                    <tr style={{ background:"#F8F9FB" }}>
+                      <th style={{ padding:"6px 10px", textAlign:"left", fontSize:"9px", fontWeight:700, color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.06em", borderBottom:"2px solid #E0E4EA" }}>Railway</th>
+                      <TH col="defects" label="Defects" />
+                      <TH col="near_imr" label="Near-IMR ≥80%" />
+                      <TH col="immediate" label="IMMEDIATE" />
+                      <TH col="urgent" label="URGENT" />
+                      <TH col="sla_breach" label="SLA breaches" />
+                      <TH col="avg_amp" label="Avg %FSH" />
+                      <TH col="sections" label="Sections" />
+                      <th style={{ padding:"6px 10px", fontSize:"9px", fontWeight:700, color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.06em", borderBottom:"2px solid #E0E4EA" }}>View</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sorted.map((d,i)=>(
+                      <tr key={d.name} style={{ borderBottom:"1px solid #EEF0F3", background: d.near_imr>5?"#FFF8F8":"transparent" }}>
+                        <td style={{ padding:"6px 10px", fontWeight:600, color:"#0B1F3A" }}>{d.name}</td>
+                        <td style={{ padding:"6px 10px", fontFamily:"var(--mono)", fontSize:"11px" }}>{d.defects}</td>
+                        <td style={{ padding:"6px 10px", fontFamily:"var(--mono)", fontSize:"11px", color:"#C8102E", fontWeight: d.near_imr>0?700:400 }}>{d.near_imr||"—"}</td>
+                        <td style={{ padding:"6px 10px", fontFamily:"var(--mono)", fontSize:"11px", color:"#C8102E" }}>{d.immediate||"—"}</td>
+                        <td style={{ padding:"6px 10px", fontFamily:"var(--mono)", fontSize:"11px", color:"#E5A100" }}>{d.urgent||"—"}</td>
+                        <td style={{ padding:"6px 10px", fontFamily:"var(--mono)", fontSize:"11px", color:d.sla_breach>0?"#C8102E":"#1A1A1A", fontWeight:d.sla_breach>0?700:400 }}>{d.sla_breach||"—"}</td>
+                        <td style={{ padding:"6px 10px" }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:"4px" }}>
+                            <div style={{ width:`${Math.min(100,(d.avg_amp||0))*0.5}px`, height:"6px", background:(d.avg_amp||0)>=60?"#C8102E":(d.avg_amp||0)>=40?"#E5A100":"#3e9dd6", borderRadius:"2px" }} />
+                            <span style={{ fontFamily:"var(--mono)", fontSize:"10.5px", color:(d.avg_amp||0)>=60?"#C8102E":(d.avg_amp||0)>=40?"#E5A100":"#1A1A1A", fontWeight:600 }}>{d.avg_amp}%</span>
+                          </div>
+                        </td>
+                        <td style={{ padding:"6px 10px", fontFamily:"var(--mono)", fontSize:"11px" }}>{d.sections||"—"}</td>
+                        <td style={{ padding:"6px 10px" }}>
+                          <a href={"Priority Queue.html?railway="+encodeURIComponent(d.fullName||d.name)} style={{ fontSize:"10px", color:"#0B1F3A", textDecoration:"none", border:"1px solid #C0C8D4", borderRadius:"3px", padding:"2px 7px", whiteSpace:"nowrap" }}>→ Queue</a>
+                        </td>
+                      </tr>
+                    ))}
+                    {/* Totals row */}
+                    <tr style={{ background:"#F8F9FB", fontWeight:700, borderTop:"2px solid #D8DCE3" }}>
+                      <td style={{ padding:"6px 10px", fontSize:"11.5px", fontWeight:700 }}>Fleet total</td>
+                      <td style={{ padding:"6px 10px", fontFamily:"var(--mono)", fontSize:"11px" }}>{stats.defects||"—"}</td>
+                      <td style={{ padding:"6px 10px", fontFamily:"var(--mono)", fontSize:"11px", color:"#C8102E" }}>{totalImr}</td>
+                      <td style={{ padding:"6px 10px", fontFamily:"var(--mono)", fontSize:"11px", color:"#C8102E" }}>{totalFracDet}</td>
+                      <td style={{ padding:"6px 10px", fontFamily:"var(--mono)", fontSize:"11px", color:"#E5A100" }}>{stats.by_level?.URGENT||"—"}</td>
+                      <td style={{ padding:"6px 10px", fontFamily:"var(--mono)", fontSize:"11px", color:totalFracUndet>0?"#C8102E":"#1A1A1A", fontWeight:700 }}>{totalFracUndet}</td>
+                      <td colSpan={3} />
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </Section>
+
+            {/* D. Confusion matrix */}
+            <Section letter="D" title="Predicted vs actual escalation matrix" hi="अनुमान बनाम वास्तविक" pageBreak>
+              <ConfusionMatrix c={CONFUSION} />
+            </Section>
+
+            {/* E. Top-10 */}
+            <Section letter="E" title="Top-10 defects by risk this period" hi="शीर्ष 10 दोष">
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"11px" }}>
+                <thead>
+                  <tr style={{ background:"#F8F9FB" }}>
+                    {["#","Division","KM & TP","UIC","Current","Predicted","Action taken","Outcome"].map(h=>(
+                      <th key={h} style={{ padding:"5px 9px", textAlign:"left", fontSize:"8.5px", fontWeight:700, color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.06em", borderBottom:"2px solid #E0E4EA", whiteSpace:"nowrap" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {TOP10.map((d,i)=>(
+                    <tr key={i} style={{ borderBottom:"1px solid #EEF0F3" }}>
+                      <td style={{ padding:"5px 9px", fontFamily:"var(--mono)", fontSize:"9.5px", color:"#B0BACA" }}>{i+1}</td>
+                      <td style={{ padding:"5px 9px", fontSize:"11px", fontWeight:500 }}>{d.div}</td>
+                      <td style={{ padding:"5px 9px", fontFamily:"var(--mono)", fontSize:"10.5px", fontWeight:600, color:"#0B1F3A" }}>{d.km}</td>
+                      <td style={{ padding:"5px 9px", fontFamily:"var(--mono)", fontSize:"10.5px" }}>{d.uic}</td>
+                      <td style={{ padding:"5px 9px" }}><ClassBadge cls={d.curr} /></td>
+                      <td style={{ padding:"5px 9px" }}><ClassBadge cls={d.pred} /></td>
+                      <td style={{ padding:"5px 9px", fontSize:"10.5px", color:"#506070" }}>{d.action}</td>
+                      <td style={{ padding:"5px 9px", fontSize:"10.5px", color: d.outcome.includes("Completed")?"#1F7A4D":d.outcome.includes("Pending")?"#A37000":"#506070" }}>{d.outcome}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Section>
+
+            {/* F. UIC family hotspots */}
+            <Section letter="F" title="UIC family hot-spots — new defects by family" hi="यूआईसी परिवार">
+              <UicFamilyChart families={UIC_FAMILIES} />
+            </Section>
+
+            {/* G. Cost deferred */}
+            <Section letter="G" title="Cost-deferred estimate" hi="लागत आस्थगित" pageBreak>
+              <div style={{ display:"flex", gap:"24px", alignItems:"flex-start", flexWrap:"wrap" }}>
+                <div>
+                  <div style={{ fontSize:"9px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.07em" }}>Estimated maintenance cost optimised this period</div>
+                  <div style={{ fontFamily:"var(--mono)", fontSize:"36px", fontWeight:700, color:"#0B1F3A", marginTop:"4px", lineHeight:1 }}>₹ 4.2 Cr</div>
+                  <div style={{ fontSize:"10.5px", color:"#1F7A4D", marginTop:"4px" }}>vs ₹2.8 Cr prior period (+50%)</div>
+                </div>
+                <div style={{ flex:1, minWidth:"280px" }}>
+                  <div style={{ fontSize:"10.5px", color:"#5A6475", lineHeight:"1.7" }}>
+                    <strong>Methodology:</strong> Early-intervention unit cost differential — planned rail-piece replacement (₹1.8L/piece avg) vs emergency fracture replacement + downtime + investigation (₹6.4L/piece avg). Multiplied by confirmed predicted-and-acted defects only. Provisional fractures (unconfirmed cause) excluded.
+                  </div>
+                  <div style={{ marginTop:"8px", fontSize:"9.5px", color:"#8A95A3", fontStyle:"italic" }}>
+                    Includes 23 rail replacements + 4 weld removals across CR zone Q4 FY2026. Does not include network-delay or liability costs.
+                  </div>
+                </div>
+              </div>
+            </Section>
+
+            {/* H. Notes for board */}
+            <Section letter="H" title="Notes for Railway Board review" hi="रेलवे बोर्ड के लिए नोट्स">
+              <div style={{ marginBottom:"6px", fontSize:"10.5px", color:"#8A95A3" }}>
+                PCE narrative — exported verbatim to PDF. Max 3 paragraphs.
+              </div>
+              <textarea
+                value={notes}
+                onChange={e=>setNotes(e.target.value)}
+                placeholder="Type board-level narrative here (e.g., 'Q4 FY2026 saw a 40% reduction in undetected fractures across CR zone, driven by accelerated USFD coverage on Bhusawal division's A-route...')"
+                style={{
+                  width:"100%", minHeight:"90px",
+                  padding:"10px 12px",
+                  fontFamily:"IBM Plex Sans", fontSize:"12px",
+                  border:"1px solid #D8DCE3", borderRadius:"3px",
+                  background:"#FAFAFA", resize:"vertical",
+                  lineHeight:"1.6", color:"#1A1A1A",
+                  outline:"none",
+                }}
+              />
+            </Section>
+
+            {/* Footer */}
+            <div style={{ marginTop:"8px", paddingTop:"12px", borderTop:"2px solid #0B1F3A", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+                <img src="assets/ir-emblem.svg" alt="IR" style={{ width:"28px", height:"28px", objectFit:"contain", opacity:0.7 }} />
+                <div>
+                  <div style={{ fontSize:"9.5px", color:"#506070", fontWeight:600 }}>Government of India · Ministry of Railways · Indian Railways</div>
+                  <div style={{ fontSize:"8.5px", color:"#8A95A3" }}>Aonami Echo · Powered by Aonami · v0.1 prototype</div>
+                </div>
+              </div>
+              <div style={{ textAlign:"right", fontSize:"8.5px", color:"#8A95A3" }}>
+                <div>Generated: {new Date().toLocaleDateString("en-IN",{day:"numeric",month:"long",year:"numeric"})}</div>
+                <div>{zone} Zone · {period}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+<script src="prototype-nav.js"></script>
+</body>
+</html>

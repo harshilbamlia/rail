@@ -1,0 +1,1139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Aonami Echo — Defect Detail</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: 'IBM Plex Sans', sans-serif; background: #F0F2F5; color: #1A1A1A; font-size: 13px; }
+:root {
+  --navy: #0B1F3A; --saffron: #FF7A1A;
+  --red: #C8102E; --amber: #E5A100; --green: #1F7A4D; --slate: #506070;
+  --border: #D8DCE3; --surface: #FFFFFF; --bg: #F0F2F5;
+  --mono: 'IBM Plex Mono', monospace;
+}
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-thumb { background: #C0C8D4; border-radius: 3px; }
+
+.section-card {
+  background: #FFFFFF;
+  border: 1px solid #D8DCE3;
+  border-radius: 4px;
+  margin-bottom: 12px;
+}
+.section-header {
+  padding: 9px 14px;
+  border-bottom: 1px solid #EAECEF;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: #8A95A3;
+}
+.section-body { padding: 12px 14px; }
+
+.badge {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 3px;
+  letter-spacing: 0.03em;
+}
+.meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+}
+.meta-row {
+  display: flex;
+  padding: 4px 0;
+  border-bottom: 1px solid #F5F5F5;
+  font-size: 11px;
+}
+.meta-key { color: #8A95A3; width: 150px; flex-shrink: 0; }
+.meta-val { color: #1A1A1A; font-weight: 500; }
+.meta-val.mono { font-family: var(--mono); }
+
+/* Tooltip */
+.chart-tooltip {
+  position: fixed;
+  pointer-events: none;
+  background: #0B1F3A;
+  color: #fff;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 11px;
+  padding: 8px 11px;
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  z-index: 500;
+  line-height: 1.6;
+  min-width: 200px;
+}
+
+/* Audit trail */
+.audit-row { padding: 7px 0; border-bottom: 1px solid #F5F5F5; display: flex; gap: 10px; }
+.audit-ts { font-family: var(--mono); font-size: 9.5px; color: #8A95A3; width: 110px; flex-shrink: 0; }
+.audit-actor { font-size: 9.5px; color: #506070; width: 70px; flex-shrink: 0; font-weight: 500; }
+.audit-msg { font-size: 10.5px; color: #1A1A1A; flex: 1; }
+
+/* Print */
+@media print {
+  body { background: white; font-size: 11px; }
+  nav, header .actions, .no-print { display: none !important; }
+  .col-left, .col-right { overflow: visible !important; height: auto !important; }
+  .section-card { break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useRef, useEffect, useCallback } = React;
+
+/* ─── API CONFIG ────────────────────────────────────────────────── */
+const API_BASE = window.location.origin;
+const api = (path) => fetch(API_BASE + path).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+
+function classify_ui(cls, asset) {
+  if (!cls) return "OBS";
+  const c = cls.trim().toUpperCase();
+  const w = (asset||"").toLowerCase().includes("weld");
+  if (["IMR","IMRW","IMR(W)"].includes(c)) return w ? "IMRW" : "IMR";
+  if (["OBS","OBS(JP)","OBS(W)","OBSW"].includes(c)) return w ? "OBSW" : "OBS";
+  if (c === "DFWO") return "DFWO"; if (c === "DFWR") return "DFWR";
+  return "OBS";
+}
+
+function short_probe(p) {
+  if (!p) return "—";
+  p = String(p).trim();
+  if (/\b0\b/.test(p)) return "0°";
+  if (/37.*NGF/i.test(p)) return "37°NGF";
+  if (/37.*GF/i.test(p)) return "37°GF";
+  if (/37.*(B|back)/i.test(p)) return "37°CB";
+  if (/37/.test(p)) return "37°CF";
+  if (/70.*NGF/i.test(p)) return "70°NGF";
+  if (/70.*GF/i.test(p)) return "70°GF";
+  if (/70.*(B|back)/i.test(p)) return "70°CB";
+  if (/70/.test(p)) return "70°CF";
+  return p.slice(0,8);
+}
+
+function mapApiToDefect(g, d, pred) {
+  const triage = d.triage || {};
+  const hist = d.inspection_history || [];
+  const probeSet = [...new Set(hist.map(h => short_probe(h.probe)).filter(p=>p!=="—"))];
+  const runs = hist.map((h, i) => {
+    const prob = short_probe(h.probe);
+    return {
+      date: h.inspection_date || "—", gmt: h.gmt_at_round,
+      probes: {[prob]: {fsh: h.amplitude_pct, depthMm: null}},
+      classification: h.classification || "OBS",
+      operator: "—", machine: "—", matchConf: null,
+      notes: i === 0 ? "First detection." : "",
+      isFirst: i === 0,
+    };
+  });
+  const lastRun = runs[runs.length-1];
+  const lastProbe = lastRun ? Object.keys(lastRun.probes)[0] : "—";
+  const projectedRun = {
+    date: g.predicted_imr_date || "—",
+    gmt: g.gmt_to_80 || (lastRun?.gmt ? lastRun.gmt + 5 : null),
+    probes: {[lastProbe]: {fsh: 80, depthMm: null}},
+    classification: g.latest_amp >= 80 ? "IMR" : (g.yrs_to_80 && g.yrs_to_80 < 10 ? "IMR" : (hist[hist.length-1]?.classification||"OBS")),
+    notes: g.yrs_to_80 ? `Paris–Erdogan RUL: ${g.yrs_to_80.toFixed(1)} yr to 80%FSH` : "Stable trajectory (no positive growth detected)",
+    isProjected: true,
+  };
+  const famRate = g.fam_C && g.fam_m ? g.fam_C * Math.pow(50, g.fam_m) : null;
+  const peer = {
+    familyMedianGrowth: famRate ? parseFloat(famRate.toFixed(3)) : null,
+    thisGrowth: g.own_slope || null,
+    multiplier: (famRate && g.own_slope) ? parseFloat((g.own_slope / famRate).toFixed(1)) : null,
+    n: null, description: (g.family || "—") + " family",
+  };
+  const isWeld = (g.asset_type||"").includes("weld");
+  const lastCls = classify_ui(hist[hist.length-1]?.classification||"OBS", g.asset_type);
+  const predCls = g.latest_amp >= 80 ? (isWeld?"IMRW":"IMR") : (g.yrs_to_80 && g.yrs_to_80 < 2 ? (isWeld?"IMRW":"IMR") : lastCls);
+  const sla24h = triage.is_imr_level ? (triage.sla_breach ? "overdue" : "pending") : null;
+  return {
+    id: g.defect_key, uuid: g.defect_key,
+    km: `${g.km}+${g.meter}`, uic: lastCls, uicLabel: (g.railway||"—") + " · " + (g.section||"—"),
+    type: isWeld ? "weld" : "rail", currentClass: lastCls, predictedClass: predCls,
+    curve: "—", probes: probeSet.length ? probeSet : [lastProbe],
+    cluster: (triage.cluster_id && triage.cluster_id > 0) ? {id:`CL-${triage.cluster_id}`, span:4.0, count:2} : null,
+    activeSR: null, sla24hFP: sla24h, sla3dReplace: sla24h,
+    markingConfirmed: false, fpProvided: false,
+    route: g.section||"—", section: g.asset_type||"—", grade: "—",
+    rollingMark:"—", hotStamping:"—", yearLaid:null, yearsService:null,
+    sleeperType:"—", sleeperFittings:"—", sleeperDensity:null,
+    ballastCushion:null, maxSpeed:null, maxAxleLoad:null,
+    trackRegime:"—", lastDestress:"—", destressTemp:"—",
+    nearestWeld:null, nearestJoint:null, nearestTunnel:null, nearestBridge:null,
+    runs, projectedRun, peer, audit: (g.audit||[]), clusterPeers: [],
+    // model-derived extras surfaced in the UI
+    family: g.family, fam_C: g.fam_C, fam_m: g.fam_m,
+    own_slope: g.own_slope, yrs_to_80: g.yrs_to_80,
+    yrs_to_60: g.yrs_to_60, gmt_to_80: g.gmt_to_80,
+    risk_score: g.risk_score, latest_amp: g.latest_amp,
+    predicted_imr_date: g.predicted_imr_date, n_readings: g.n_readings,
+    triageLevel: triage.triage_level || "ROUTINE",
+    railway: g.railway, railway_section: g.section,
+    predNextAmp: pred?.predicted_next_amp, predBaseline: pred?.persistence_baseline,
+  };
+}
+
+/* ─── DEFECT PLACEHOLDER (offline / pre-fetch) ──────────────────── */
+const DEFECT = {
+  id: "D001",
+  uuid: "pmw-2026-CR-MUM-D001",
+  km: "00482-12-04",
+  uic: "111-1.2",
+  uicLabel: "Transverse defect, head, gauge-face",
+  type: "rail",
+  currentClass: "OBS",
+  predictedClass: "IMR",
+  curve: "C4°·O",
+  probes: ["70°CF", "70°GF"],           // multi-probe detection → Para 6.3.1 escalation
+  cluster: { id: "CL-01", span: 3.2, count: 2 },
+  activeSR: null,
+  sla24hFP: "pending",
+  sla3dReplace: "pending",
+  markingConfirmed: false,
+  fpProvided: false,
+  route: "A", section: "60kg", grade: "90 UTS",
+  rollingMark: "SAIL 2021 E", hotStamping: "60E1-MUM-21-048",
+  yearLaid: 2021, yearsService: 5,
+  sleeperType: "PSC", sleeperFittings: "ERC Mk-IV", sleeperDensity: 1660,
+  ballastCushion: 350, maxSpeed: 130, maxAxleLoad: 22.9,
+  trackRegime: "CWR", lastDestress: "14 Nov 2024", destressTemp: "38°C",
+  nearestWeld: 4.8, nearestJoint: 22.4, nearestTunnel: null, nearestBridge: 18.2,
+
+  // Amplitude data per probe across inspection runs
+  runs: [
+    {
+      date: "12 Nov 2024", gmt: 38.4,
+      probes: { "70°CF": { fsh: 14, depthMm: 2.1 }, "70°GF": { fsh: null, depthMm: null } },
+      classification: "OBS", operator: "SE/JE K. Sharma", machine: "DRT-MUM-02",
+      matchConf: null, notes: "First detection. Single probe 70°CF. OBS threshold met at 14%FSH.",
+      isFirst: true,
+    },
+    {
+      date: "18 Jan 2025", gmt: 44.2,
+      probes: { "70°CF": { fsh: 22, depthMm: 3.3 }, "70°GF": { fsh: 18, depthMm: 2.8 } },
+      classification: "OBS", operator: "SE/JE R. Patil", machine: "DRT-MUM-02",
+      matchConf: 96, notes: "2nd probe (70°GF) now detecting. Para 6.3.1 escalation rule met — both probes OBS.",
+      escalated: true,
+    },
+    {
+      date: "02 Apr 2025", gmt: 51.7,
+      probes: { "70°CF": { fsh: 34, depthMm: 5.1 }, "70°GF": { fsh: 29, depthMm: 4.4 } },
+      classification: "OBS", operator: "SE/JE K. Sharma", machine: "DRT-MUM-01",
+      matchConf: 94, notes: "",
+    },
+    {
+      date: "28 Jun 2025", gmt: 58.9,
+      probes: { "70°CF": { fsh: 48, depthMm: 7.2 }, "70°GF": { fsh: 41, depthMm: 6.2 } },
+      classification: "OBS", operator: "AEN V. Kulkarni", machine: "DRT-MUM-02",
+      matchConf: 97, notes: "AEN test-check. Classification confirmed OBS.",
+    },
+    {
+      date: "14 Sep 2025", gmt: 65.3,
+      probes: { "70°CF": { fsh: 61, depthMm: 9.2 }, "70°GF": { fsh: 54, depthMm: 8.1 } },
+      classification: "OBS", operator: "SE/JE R. Patil", machine: "DRT-MUM-02",
+      matchConf: 95, notes: "Approaching IMR threshold. Joggled FP ordered.",
+    },
+    {
+      date: "12 Apr 2026", gmt: 72.1,
+      probes: { "70°CF": { fsh: 74, depthMm: 11.1 }, "70°GF": { fsh: 68, depthMm: 10.2 } },
+      classification: "OBS", operator: "SE/JE K. Sharma", machine: "DRT-MUM-02",
+      matchConf: 98, notes: "Current run. Both probes converging on IMR threshold.",
+    },
+  ],
+
+  // Projected next run
+  projectedRun: {
+    date: "~10 Jun 2026", gmt: 73.9,
+    probes: { "70°CF": { fsh: 84, depthMm: 12.6 }, "70°GF": { fsh: 78, depthMm: 11.7 } },
+    classification: "IMR",
+    notes: "Model projection (Paris-Erdogan fit, R²=0.96). IMR threshold breach expected.",
+    isProjected: true,
+  },
+
+  // Peer benchmark
+  peer: {
+    familyMedianGrowth: 1.4,   // %FSH per GMT
+    thisGrowth: 3.2,
+    multiplier: 2.3,
+    n: 47,
+    description: "111/211 family on 60kg 90 UTS, GMT band 40–80",
+  },
+
+  // Audit trail
+  audit: [
+    { ts: "12 Nov 2024 09:14", actor: "System", msg: "Defect created — first detection, run DRT-MUM-02. Classification: OBS." },
+    { ts: "12 Nov 2024 11:32", actor: "K. Sharma", msg: "Annexure V entry filed. Joggled fish plate ordered (24-hr SLA)." },
+    { ts: "13 Nov 2024 07:55", actor: "K. Sharma", msg: "Joggled fish plate installed. SLA met." },
+    { ts: "18 Jan 2025 10:08", actor: "System", msg: "Run DRT-MUM-02 matched defect. 2nd probe (70°GF) detecting — Para 6.3.1 multi-probe flag raised." },
+    { ts: "18 Jan 2025 14:22", actor: "R. Patil", msg: "Reviewed multi-probe flag. Classification held at OBS — amplitude below 60%FSH IMR threshold. Joggled FP re-confirmed." },
+    { ts: "02 Apr 2025 08:45", actor: "System", msg: "Run DRT-MUM-01 matched defect. Growth rate 3.2 %FSH/GMT — flagged to watchlist." },
+    { ts: "28 Jun 2025 15:10", actor: "AEN V. Kulkarni", msg: "AEN test-check (Annexure V Para 4.3). Classification OBS confirmed. No reclassification." },
+    { ts: "28 Jun 2025 15:12", actor: "System", msg: "Model updated: predicted IMR crossing at ~73.9 GMT (prev: 76.1). Confidence 92%." },
+    { ts: "14 Sep 2025 09:33", actor: "R. Patil", msg: "Joggled fish plate refreshed. Replacement planned for next maintenance block." },
+    { ts: "12 Apr 2026 11:04", actor: "System", msg: "Current run DRT-MUM-02. Both probes 70°CF (74%FSH) + 70°GF (68%FSH). IMR threshold breach predicted at 73.9 GMT." },
+    { ts: "12 Apr 2026 11:05", actor: "System", msg: "Work order draft generated — Annexure III pre-filled. Awaiting SE/JE confirmation." },
+  ],
+
+  clusterPeers: [
+    { km: "00482-12-06", uic: "112-1.1", curr: "OBS", pred: "IMR", gmtTT: 1.8, probe: "70°GF" },
+  ],
+};
+
+/* ─── STATUS HELPERS ────────────────────────────────────────────── */
+function classStyle(cls) {
+  if (cls === "IMR" || cls === "IMRW") return { bg:"#FFF0F2", text:"#C8102E", border:"#C8102E" };
+  if (cls === "OBS" || cls === "OBSW" || cls === "DFWR") return { bg:"#FFF8E6", text:"#9A6600", border:"#E5A100" };
+  if (cls === "GCC") return { bg:"#F0F4FF", text:"#3A5BC7", border:"#7092E0" };
+  return { bg:"#F0FAF5", text:"#1F7A4D", border:"#1F7A4D" };
+}
+function ClassBadge({ cls, large }) {
+  const s = classStyle(cls);
+  return <span className="badge" style={{ fontSize: large?"13px":"11px", padding: large?"4px 12px":"2px 7px", background:s.bg, color:s.text, border:`1px solid ${s.border}` }}>{cls}</span>;
+}
+
+/* ─── AMPLITUDE CHART (multi-probe) ─────────────────────────────── */
+const PROBE_COLORS = {
+  "70°CF": "#0B1F3A",
+  "70°GF": "#3A7AB0",
+  "70°CB": "#1F7A4D",
+  "70°GB": "#506070",
+  "37°CF": "#7A3AB0",
+  "37°CB": "#B03A7A",
+  "0°": "#C8102E",
+};
+
+function AmplitudeChart({ runs, projectedRun, probes, calibRef }) {
+  const W = 680, H = 240;
+  const PAD = { top: 32, right: 70, bottom: 50, left: 46 };
+  const cw = W - PAD.left - PAD.right;
+  const ch = H - PAD.top - PAD.bottom;
+
+  const [tooltip, setTooltip] = useState(null);
+  const svgRef = useRef(null);
+
+  // X range: GMT
+  const allGmts = runs.map(r => r.gmt);
+  const minGmt = Math.min(...allGmts) - 2;
+  const maxGmt = projectedRun.gmt + 3;
+  const toX = g => PAD.left + ((g - minGmt) / (maxGmt - minGmt)) * cw;
+  const toY = v => PAD.top + ch - (v / 100) * ch;
+
+  // Threshold lines (Annexure II A)
+  const thresholds = [
+    { fsh: 30, label: "30% OBS", note: "OBS threshold (Annex II-A)", color: "#E5A100" },
+    { fsh: 60, label: "60% IMR", note: "≥60%FSH → IMR (Annex II-A row 3)", color: "#C8102E" },
+    { fsh: 80, label: "80% IMR", note: "≥80% loss → IMR (Annex II-A row 5)", color: "#C8102E" },
+  ];
+
+  // Calendar dates (secondary x-axis at top)
+  const calDates = runs.map(r => ({ gmt: r.gmt, date: r.date.split(" ").slice(1).join(" ") + " '" + r.date.slice(-2) }));
+
+  // Vertical reference lines
+  const vRefs = [
+    { gmt: runs[0].gmt, label: "First detection", color: "#506070" },
+    { gmt: projectedRun.gmt, label: "Predicted breach", color: "#C8102E" },
+  ];
+
+  // Build probe line data
+  const probeLines = probes.map(probe => ({
+    probe,
+    color: PROBE_COLORS[probe] || "#506070",
+    measured: runs.filter(r => r.probes[probe]?.fsh != null).map(r => ({ gmt: r.gmt, fsh: r.probes[probe].fsh, run: r })),
+    projected: projectedRun.probes[probe]?.fsh != null ? { gmt: projectedRun.gmt, fsh: projectedRun.probes[probe].fsh } : null,
+  }));
+
+  function handlePointHover(e, run, probe) {
+    const rect = svgRef.current?.getBoundingClientRect();
+    setTooltip({ x: e.clientX, y: e.clientY, run, probe });
+  }
+
+  return (
+    <div style={{ position: "relative" }}>
+      <svg ref={svgRef} width={W} height={H} style={{ display: "block", maxWidth: "100%" }}>
+        {/* Background */}
+        <rect x={PAD.left} y={PAD.top} width={cw} height={ch} fill="#FAFBFC" />
+
+        {/* Grid lines */}
+        {[0,20,40,60,80,100].map(v => (
+          <g key={v}>
+            <line x1={PAD.left} y1={toY(v)} x2={W-PAD.right} y2={toY(v)} stroke={v===0?"#D8DCE3":"#EAECEF"} strokeWidth="1" />
+            <text x={PAD.left-5} y={toY(v)+4} textAnchor="end" fontSize="9" fill="#8A95A3" fontFamily="IBM Plex Mono">{v}%</text>
+          </g>
+        ))}
+
+        {/* Vertical reference lines */}
+        {vRefs.map((vr, i) => (
+          <g key={i}>
+            <line x1={toX(vr.gmt)} y1={PAD.top} x2={toX(vr.gmt)} y2={PAD.top+ch} stroke={vr.color} strokeWidth="1" strokeDasharray="4,3" opacity="0.6" />
+            <text x={toX(vr.gmt)+3} y={PAD.top+10} fontSize="8" fill={vr.color} fontFamily="IBM Plex Sans" fontStyle="italic">{vr.label}</text>
+          </g>
+        ))}
+
+        {/* Threshold lines */}
+        {thresholds.map(t => (
+          <g key={t.fsh}>
+            <line x1={PAD.left} y1={toY(t.fsh)} x2={W-PAD.right} y2={toY(t.fsh)} stroke={t.color} strokeWidth="1" strokeDasharray="5,3" opacity="0.7" />
+            <text x={W-PAD.right+3} y={toY(t.fsh)+4} fontSize="8" fill={t.color} fontFamily="IBM Plex Mono" fontWeight="600">{t.label}</text>
+          </g>
+        ))}
+
+        {/* Confidence band (last measured → projected, ±15%) */}
+        {probeLines[0]?.projected && probeLines[0]?.measured.length > 0 && (() => {
+          const last = probeLines[0].measured[probeLines[0].measured.length-1];
+          const proj = probeLines[0].projected;
+          const bandPts = [
+            `${toX(last.gmt)},${toY(last.fsh)}`,
+            `${toX(proj.gmt)},${toY(Math.min(100, proj.fsh * 1.15))}`,
+            `${toX(proj.gmt)},${toY(proj.fsh * 0.85)}`,
+            `${toX(last.gmt)},${toY(last.fsh)}`,
+          ].join(" ");
+          return <polygon points={bandPts} fill="rgba(200,16,46,0.07)" />;
+        })()}
+
+        {/* Calendar secondary axis (top) */}
+        {calDates.map((cd, i) => (
+          <g key={i}>
+            <line x1={toX(cd.gmt)} y1={PAD.top-2} x2={toX(cd.gmt)} y2={PAD.top} stroke="#C0C8D4" strokeWidth="1" />
+            <text x={toX(cd.gmt)} y={PAD.top-4} textAnchor="middle" fontSize="7.5" fill="#B0BACA" fontFamily="IBM Plex Mono">{cd.date}</text>
+          </g>
+        ))}
+        <text x={PAD.left} y={PAD.top-13} fontSize="7" fill="#C0CACE" fontFamily="IBM Plex Sans">Calendar dates (secondary) ↑</text>
+
+        {/* Probe lines */}
+        {probeLines.map(pl => {
+          if (pl.measured.length < 2) return null;
+          const solidPts = pl.measured.map(p => `${toX(p.gmt)},${toY(p.fsh)}`).join(" ");
+          return (
+            <g key={pl.probe}>
+              <polyline points={solidPts} fill="none" stroke={pl.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+              {/* Dashed projected segment */}
+              {pl.projected && pl.measured.length > 0 && (() => {
+                const last = pl.measured[pl.measured.length-1];
+                return <line x1={toX(last.gmt)} y1={toY(last.fsh)} x2={toX(pl.projected.gmt)} y2={toY(pl.projected.fsh)} stroke={pl.color} strokeWidth="1.5" strokeDasharray="5,3" />;
+              })()}
+              {/* Label at right edge */}
+              {pl.measured.length > 0 && (() => {
+                const last = pl.measured[pl.measured.length-1];
+                return <text x={W-PAD.right+4} y={toY(last.fsh)+4} fontSize="8.5" fill={pl.color} fontFamily="IBM Plex Mono" fontWeight="600">{pl.probe}</text>;
+              })()}
+              {/* Data points */}
+              {pl.measured.map((p, i) => (
+                <circle key={i} cx={toX(p.gmt)} cy={toY(p.fsh)} r="4"
+                  fill={pl.color} stroke="#FFFFFF" strokeWidth="1.5"
+                  style={{ cursor: "pointer" }}
+                  onMouseEnter={e => handlePointHover(e, p.run, pl.probe)}
+                  onMouseLeave={() => setTooltip(null)}
+                />
+              ))}
+              {/* Projected point */}
+              {pl.projected && (
+                <circle cx={toX(pl.projected.gmt)} cy={toY(pl.projected.fsh)} r="4"
+                  fill="none" stroke={pl.color} strokeWidth="1.5" strokeDasharray="2,2" />
+              )}
+            </g>
+          );
+        })}
+
+        {/* X axis */}
+        <line x1={PAD.left} y1={PAD.top+ch} x2={W-PAD.right} y2={PAD.top+ch} stroke="#D8DCE3" strokeWidth="1" />
+        {runs.map(r => (
+          <g key={r.gmt}>
+            <line x1={toX(r.gmt)} y1={PAD.top+ch} x2={toX(r.gmt)} y2={PAD.top+ch+5} stroke="#C0C8D4" strokeWidth="1" />
+            <text x={toX(r.gmt)} y={PAD.top+ch+14} textAnchor="middle" fontSize="9" fill="#8A95A3" fontFamily="IBM Plex Mono">{r.gmt}</text>
+          </g>
+        ))}
+        <text x={toX(projectedRun.gmt)} y={PAD.top+ch+14} textAnchor="middle" fontSize="9" fill="#C8102E" fontFamily="IBM Plex Mono">{projectedRun.gmt}*</text>
+        <text x={PAD.left+cw/2} y={H-4} textAnchor="middle" fontSize="8.5" fill="#8A95A3" fontFamily="IBM Plex Sans">Cumulative GMT</text>
+
+        {/* Y axis label */}
+        <text x={11} y={PAD.top+ch/2} textAnchor="middle" fontSize="8.5" fill="#8A95A3" fontFamily="IBM Plex Sans" transform={`rotate(-90,11,${PAD.top+ch/2})`}>Amplitude (%FSH)</text>
+      </svg>
+
+      {/* Calibration ref */}
+      <div style={{ marginTop: "4px", fontSize: "9.5px", color: "#8A95A3", display: "flex", gap: "16px", flexWrap: "wrap" }}>
+        <span>Sensitivity ref: <span style={{ fontFamily: "var(--mono)", color: "#506070" }}>{calibRef}</span></span>
+        <span style={{ display:"flex", gap:"8px" }}>
+          {probeLines.map(pl => (
+            <span key={pl.probe} style={{ display:"flex", alignItems:"center", gap:"3px" }}>
+              <svg width="16" height="3"><line x1="0" y1="1.5" x2="16" y2="1.5" stroke={pl.color} strokeWidth="2"/></svg>
+              <span style={{ fontFamily:"var(--mono)", fontSize:"9px", color:pl.color }}>{pl.probe}</span>
+            </span>
+          ))}
+          <span style={{ display:"flex", alignItems:"center", gap:"3px" }}>
+            <svg width="16" height="3"><line x1="0" y1="1.5" x2="16" y2="1.5" stroke="#506070" strokeWidth="1.5" strokeDasharray="4,2"/></svg>
+            <span style={{ fontSize:"9px", color:"#8A95A3" }}>Projected</span>
+          </span>
+          <span style={{ display:"flex", alignItems:"center", gap:"3px" }}>
+            <svg width="12" height="8"><rect x="0" y="0" width="12" height="8" fill="rgba(200,16,46,0.12)"/></svg>
+            <span style={{ fontSize:"9px", color:"#8A95A3" }}>95% band</span>
+          </span>
+        </span>
+      </div>
+
+      {/* Chart tooltip */}
+      {tooltip && (
+        <div className="chart-tooltip" style={{ left: tooltip.x + 14, top: tooltip.y - 10 }}>
+          <div style={{ fontFamily:"var(--mono)", fontWeight:600, marginBottom:"3px" }}>{tooltip.run.date} · {tooltip.run.gmt} GMT</div>
+          <div style={{ display:"flex", gap:"16px" }}>
+            <div>
+              <div style={{ fontSize:"9.5px", color:"#A0B8C8" }}>Probe</div>
+              <div style={{ fontFamily:"var(--mono)", fontSize:"11px" }}>{tooltip.probe}</div>
+            </div>
+            <div>
+              <div style={{ fontSize:"9.5px", color:"#A0B8C8" }}>%FSH</div>
+              <div style={{ fontFamily:"var(--mono)", fontSize:"11px" }}>{tooltip.run.probes[tooltip.probe]?.fsh}%</div>
+            </div>
+            <div>
+              <div style={{ fontSize:"9.5px", color:"#A0B8C8" }}>Inferred depth</div>
+              <div style={{ fontFamily:"var(--mono)", fontSize:"11px" }}>{tooltip.run.probes[tooltip.probe]?.depthMm} mm</div>
+            </div>
+          </div>
+          <div style={{ marginTop:"4px", fontSize:"9.5px", color:"#8AACBC" }}>
+            <div>{tooltip.run.operator} · {tooltip.run.machine}</div>
+            {tooltip.run.notes && <div style={{ marginTop:"2px", color:"#C8D8E8" }}>{tooltip.run.notes}</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── INSPECTION HISTORY TABLE ──────────────────────────────────── */
+function InspectionTable({ runs, projectedRun, probes }) {
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
+        <thead>
+          <tr style={{ background: "#F8F9FB" }}>
+            {["Run date", "GMT (cum.)", ...probes.map(p => `${p} %FSH`), ...probes.map(p => `${p} depth`), "Classification", "Operator", "Machine", "Match conf.", "Notes"].map(h => (
+              <th key={h} style={{ padding: "6px 10px", textAlign:"left", fontSize:"9px", fontWeight:700, color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.06em", borderBottom:"2px solid #E0E4EA", whiteSpace:"nowrap" }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {runs.map((r, i) => {
+            const isFirst = r.isFirst;
+            const isEscalated = r.escalated;
+            const rowBg = isFirst ? "#F0FAF5" : isEscalated ? "#FFF8E6" : "transparent";
+            return (
+              <tr key={i} style={{ background: rowBg, borderBottom: "1px solid #EEF0F3" }}>
+                <td style={{ padding:"5px 10px", whiteSpace:"nowrap" }}>
+                  <div style={{ fontFamily:"var(--mono)", fontSize:"10.5px", fontWeight: isFirst?700:400 }}>{r.date}</div>
+                  {isFirst && <div style={{ fontSize:"8.5px", color:"#1F7A4D", fontWeight:600 }}>First detection</div>}
+                </td>
+                <td style={{ padding:"5px 10px", fontFamily:"var(--mono)", fontSize:"10.5px" }}>{r.gmt}</td>
+                {probes.map(p => (
+                  <td key={p+"fsh"} style={{ padding:"5px 10px", fontFamily:"var(--mono)", fontSize:"10.5px", color: r.probes[p]?.fsh >= 60 ? "#C8102E" : r.probes[p]?.fsh >= 30 ? "#A37000" : "#1A1A1A" }}>
+                    {r.probes[p]?.fsh != null ? `${r.probes[p].fsh}%` : "—"}
+                  </td>
+                ))}
+                {probes.map(p => (
+                  <td key={p+"dep"} style={{ padding:"5px 10px", fontFamily:"var(--mono)", fontSize:"10.5px" }}>
+                    {r.probes[p]?.depthMm != null ? `${r.probes[p].depthMm}mm` : "—"}
+                  </td>
+                ))}
+                <td style={{ padding:"5px 10px" }}>
+                  <span className="badge" style={{ fontSize:"10px", padding:"1px 6px", ...classStyle(r.classification) }}>{r.classification}</span>
+                  {isEscalated && <div style={{ fontSize:"8px", color:"#A37000", marginTop:"1px" }}>Para 6.3.1 ↑</div>}
+                </td>
+                <td style={{ padding:"5px 10px", fontSize:"10.5px" }}>{r.operator}</td>
+                <td style={{ padding:"5px 10px", fontFamily:"var(--mono)", fontSize:"10px" }}>{r.machine}</td>
+                <td style={{ padding:"5px 10px", fontFamily:"var(--mono)", fontSize:"10.5px", color: r.matchConf ? (r.matchConf>=95?"#1F7A4D":"#A37000") : "#8A95A3" }}>
+                  {r.matchConf ? `${r.matchConf}%` : "—"}
+                </td>
+                <td style={{ padding:"5px 10px", fontSize:"10px", color:"#506070", maxWidth:"200px" }}>{r.notes}</td>
+              </tr>
+            );
+          })}
+          {/* Projected row */}
+          <tr style={{ background:"#FFF8F8", borderBottom:"1px solid #EEF0F3" }}>
+            <td style={{ padding:"5px 10px" }}>
+              <div style={{ fontFamily:"var(--mono)", fontSize:"10.5px", color:"#C8102E", fontStyle:"italic" }}>{projectedRun.date}</div>
+              <div style={{ fontSize:"8.5px", color:"#C8102E", fontWeight:600 }}>Projected</div>
+            </td>
+            <td style={{ padding:"5px 10px", fontFamily:"var(--mono)", fontSize:"10.5px", color:"#C8102E" }}>{projectedRun.gmt}*</td>
+            {probes.map(p => (
+              <td key={p+"fsh"} style={{ padding:"5px 10px", fontFamily:"var(--mono)", fontSize:"10.5px", color:"#C8102E", fontStyle:"italic" }}>
+                {projectedRun.probes[p]?.fsh != null ? `~${projectedRun.probes[p].fsh}%` : "—"}
+              </td>
+            ))}
+            {probes.map(p => (
+              <td key={p+"dep"} style={{ padding:"5px 10px", fontFamily:"var(--mono)", fontSize:"10.5px", color:"#C8102E", fontStyle:"italic" }}>
+                {projectedRun.probes[p]?.depthMm != null ? `~${projectedRun.probes[p].depthMm}mm` : "—"}
+              </td>
+            ))}
+            <td style={{ padding:"5px 10px" }}>
+              <span className="badge" style={{ fontSize:"10px", padding:"1px 6px", background:"#FFF0F2", color:"#C8102E", border:"1px solid #C8102E" }}>IMR</span>
+            </td>
+            <td colSpan={3} style={{ padding:"5px 10px", fontSize:"10px", color:"#C8102E", fontStyle:"italic" }}>Model projection — R²=0.96</td>
+            <td style={{ padding:"5px 10px", fontSize:"10px", color:"#8A95A3", fontStyle:"italic" }}>{projectedRun.notes}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* ─── CLUSTER MINI SCHEMATIC ─────────────────────────────────────── */
+function ClusterSchematic({ defect, peers }) {
+  const W = 260, H = 80;
+  const allDefects = [
+    { km: 0, curr: defect.currentClass, pred: defect.predictedClass, uic: defect.uic, self: true },
+    ...peers.map((p, i) => ({ km: (i+1)*1.6, curr: p.curr, pred: p.pred, uic: p.uic })),
+  ];
+  const span = Math.max(...allDefects.map(d => d.km)) + 0.5;
+  const scale = (W - 40) / Math.max(span, 4);
+  const toX = km => 20 + km * scale;
+  const CY = 40;
+
+  return (
+    <svg width={W} height={H} style={{ display:"block" }}>
+      {/* 4m window */}
+      <rect x={toX(0)-8} y={CY-20} width={Math.min(4*scale+16, W-20)} height={40} fill="rgba(200,16,46,0.05)" stroke="#C8102E" strokeWidth="1" strokeDasharray="4,3" rx={2} />
+      <text x={toX(0)-6} y={CY-23} fontSize="8" fill="#C8102E" fontFamily="IBM Plex Mono">4 m cluster window</text>
+
+      {/* Rail line */}
+      <line x1={0} y1={CY} x2={W} y2={CY} stroke="#0B1F3A" strokeWidth="3" />
+
+      {/* Defect dots */}
+      {allDefects.map((d, i) => {
+        const x = toX(d.km);
+        const color = d.pred === "IMR" ? "#C8102E" : "#E5A100";
+        return (
+          <g key={i}>
+            <circle cx={x} cy={CY} r={d.self?8:6} fill={color} stroke={d.self?"#FFFFFF":"none"} strokeWidth={d.self?2:0} opacity={0.9} />
+            <text x={x} y={CY-12} textAnchor="middle" fontSize="7.5" fill={color} fontFamily="IBM Plex Mono">{d.uic.split("-")[0]}</text>
+            <text x={x} y={CY+18} textAnchor="middle" fontSize="7" fill="#8A95A3" fontFamily="IBM Plex Mono">{d.km.toFixed(1)}m</text>
+          </g>
+        );
+      })}
+
+      {/* Span label */}
+      <text x={W/2} y={H-4} textAnchor="middle" fontSize="8" fill="#8A95A3" fontFamily="IBM Plex Sans">
+        Cluster CL-01 · span 3.2 m · {allDefects.length} defects
+      </text>
+    </svg>
+  );
+}
+
+/* ─── PEER BENCHMARK ─────────────────────────────────────────────── */
+function PeerBenchmark({ peer }) {
+  const W = 360, H = 48;
+  const maxVal = peer.thisGrowth * 1.3;
+  const medianX = (peer.familyMedianGrowth / maxVal) * (W - 80);
+  const thisX = (peer.thisGrowth / maxVal) * (W - 80);
+
+  return (
+    <div>
+      <div style={{ fontSize:"11px", color:"#1A1A1A", marginBottom:"8px", lineHeight:"1.5" }}>
+        Growth rate <strong style={{ fontFamily:"var(--mono)", color:"#C8102E" }}>{peer.multiplier}×</strong> faster than {peer.description} median
+        <span style={{ fontSize:"9.5px", color:"#8A95A3", marginLeft:"6px" }}>(n={peer.n} peer defects)</span>
+      </div>
+      <svg width={W} height={H} style={{ display:"block" }}>
+        {/* Track */}
+        <rect x={0} y={H/2-3} width={W-80} height={6} fill="#EEF0F3" rx={3} />
+        {/* Distribution (rough bell) */}
+        <rect x={medianX*0.4} y={H/2-3} width={medianX*0.8} height={6} fill="#D8DCE3" rx={3} opacity={0.6} />
+        {/* Median marker */}
+        <line x1={medianX} y1={H/2-12} x2={medianX} y2={H/2+12} stroke="#1F7A4D" strokeWidth="2" />
+        <text x={medianX} y={H/2-15} textAnchor="middle" fontSize="8" fill="#1F7A4D" fontFamily="IBM Plex Mono">median</text>
+        <text x={medianX} y={H/2+22} textAnchor="middle" fontSize="8" fill="#1F7A4D" fontFamily="IBM Plex Mono">{peer.familyMedianGrowth}</text>
+        {/* This defect marker */}
+        <line x1={thisX} y1={H/2-12} x2={thisX} y2={H/2+12} stroke="#C8102E" strokeWidth="2.5" />
+        <text x={thisX} y={H/2-15} textAnchor="middle" fontSize="8" fill="#C8102E" fontFamily="IBM Plex Mono">this defect</text>
+        <text x={thisX} y={H/2+22} textAnchor="middle" fontSize="8" fill="#C8102E" fontFamily="IBM Plex Mono">{peer.thisGrowth}</text>
+        {/* Unit */}
+        <text x={W-76} y={H/2+4} fontSize="8.5" fill="#8A95A3" fontFamily="IBM Plex Sans">%FSH / GMT</text>
+      </svg>
+    </div>
+  );
+}
+
+/* ─── SECTION WRAPPER ───────────────────────────────────────────── */
+function Section({ letter, title, children, collapsible, defaultOpen=true }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="section-card">
+      <div className="section-header" style={{ cursor: collapsible?"pointer":"default" }} onClick={() => collapsible && setOpen(o=>!o)}>
+        <span style={{ fontFamily:"var(--mono)", fontSize:"10px", fontWeight:700, color:"#FF7A1A", width:"16px" }}>{letter}</span>
+        <span className="section-label">{title}</span>
+        {collapsible && <span style={{ marginLeft:"auto", fontSize:"11px", color:"#8A95A3" }}>{open?"▴":"▾"}</span>}
+      </div>
+      {open && <div className="section-body">{children}</div>}
+    </div>
+  );
+}
+
+/* ─── MAIN APP ───────────────────────────────────────────────────── */
+function App() {
+  const [D, setD] = useState(DEFECT);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [markingConfirmed, setMarkingConfirmed] = useState(false);
+  const [fpProvided, setFpProvided] = useState(false);
+  const [reclassifyOpen, setReclassifyOpen] = useState(false);
+  const [exportMsg, setExportMsg] = useState(null);
+  const [tweaksVisible, setTweaksVisible] = useState(false);
+
+  const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{ "showHindi": true, "showAudit": false }/*EDITMODE-END*/;
+  const _tw = useTweaks(TWEAK_DEFAULTS);
+  const tweaks = (_tw && _tw.tweaks) ? _tw.tweaks : TWEAK_DEFAULTS;
+  const setTweak = (_tw && _tw.setTweak) ? _tw.setTweak : () => {};
+
+  useEffect(() => {
+    const h = e => {
+      if (e.data?.type==="__activate_edit_mode") setTweaksVisible(true);
+      if (e.data?.type==="__deactivate_edit_mode") setTweaksVisible(false);
+    };
+    window.addEventListener("message", h);
+    window.parent.postMessage({ type:"__edit_mode_available" }, "*");
+    return () => window.removeEventListener("message", h);
+  }, []);
+
+  // ── Fetch real defect from API ──
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const key = params.get("key");
+    if (!key) { setLoading(false); return; }
+    Promise.all([
+      api("/api/defect_growth?key=" + encodeURIComponent(key)),
+      api("/api/defect?key=" + encodeURIComponent(key)),
+      api("/api/predict?key=" + encodeURIComponent(key)).catch(() => null),
+    ]).then(([g, d, pred]) => {
+      const mapped = mapApiToDefect(g, d, pred);
+      setD(mapped);
+      setMarkingConfirmed(false);
+      setFpProvided(false);
+      setLoading(false);
+    }).catch(e => {
+      setError("Could not load defect: " + e.message);
+      setLoading(false);
+    });
+  }, []);
+
+  function handleExport() {
+    const key = D.uuid || D.id;
+    if (key && key !== "pmw-2026-CR-MUM-D001") {
+      window.location.href = "Annexure III Form.html?key=" + encodeURIComponent(key);
+    } else {
+      setExportMsg("Generating Annexure III — pre-filling from system state…");
+      setTimeout(() => setExportMsg(null), 3500);
+    }
+  }
+
+  const currStyle = classStyle(D.currentClass);
+  const predStyle = classStyle(D.predictedClass);
+
+  const NAV = [
+    {icon:"≡",label:"Queue",href:"Priority Queue.html"},
+    {icon:"◈",label:"Map",href:"Track Map.html"},
+    {icon:"∿",label:"Defect",active:true,href:"Defect Detail.html"},
+    {icon:"⊞",label:"Cluster",href:"Cluster View.html"},
+    {icon:"↑",label:"Import",href:"Inspection Run Import.html"},
+    {icon:"□",label:"Annex",href:"Annexure III Form.html"},
+    {icon:"⊙",label:"Zone",href:"Zone Rollup.html"},
+    {icon:"⬡",label:"Model",href:"Model.html"},
+  ];
+
+  if (loading) return (
+    <div style={{ display:"flex", height:"100vh", alignItems:"center", justifyContent:"center", background:"#F0F2F5", color:"#8A95A3", fontFamily:"IBM Plex Sans" }}>
+      Loading defect data…
+    </div>
+  );
+
+  return (
+    <div style={{ display:"flex", height:"100vh", background:"#F0F2F5", overflow:"hidden" }}>
+
+      {/* LEFT NAV */}
+      <nav style={{ width:"52px", flexShrink:0, background:"#0B1F3A", display:"flex", flexDirection:"column", alignItems:"center", gap:"2px" }}>
+        <div style={{ width:"52px", height:"52px", background:"#132D52", display:"flex", alignItems:"center", justifyContent:"center", borderBottom:"1px solid #1C3F6E", flexShrink:0 }}>
+          <span style={{ fontSize:"18px", fontWeight:700, color:"#FF7A1A" }}>⌁</span>
+        </div>
+        {NAV.map(({icon,label,active,href}) => (
+          <div key={label} title={label} onClick={() => { if (!active && href) window.location.href = href; }}
+            style={{ width:"44px", height:"44px", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:"2px", background:active?"#1C3F6E":"transparent", borderRadius:"4px", cursor:active?"default":"pointer", borderLeft:active?"2px solid #FF7A1A":"2px solid transparent" }}>
+            <span style={{ fontSize:"15px", color:active?"#FFFFFF":"#6B8BB0", lineHeight:1 }}>{icon}</span>
+            <span style={{ fontSize:"7.5px", color:active?"#FFFFFF":"#4A6480", letterSpacing:"0.05em", textTransform:"uppercase" }}>{label}</span>
+          </div>
+        ))}
+        <div style={{ marginTop:"auto", marginBottom:"8px" }}>
+          <div style={{ width:"28px", height:"28px", background:"#1C3F6E", borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"10px", fontWeight:700, color:"#FFFFFF" }}>IR</div>
+        </div>
+      </nav>
+
+      {/* MAIN */}
+      <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", minWidth:0 }}>
+
+        {/* TOP BAR */}
+        <header style={{ height:"48px", background:"#FFFFFF", borderBottom:"1px solid #D8DCE3", display:"flex", alignItems:"center", padding:"0 18px", gap:"0", flexShrink:0 }}>
+          {/* Breadcrumb */}
+          <div style={{ display:"flex", alignItems:"center", gap:"6px", fontSize:"11.5px", flex:1 }}>
+            <a href="Priority Queue.html" style={{ color:"#8A95A3", textDecoration:"none" }}>← Priority Queue</a>
+            <span style={{ color:"#C0C8D4" }}>›</span>
+            <span style={{ color:"#8A95A3" }}>{D.railway || "—"}</span>
+            <span style={{ color:"#C0C8D4" }}>›</span>
+            <span style={{ fontFamily:"var(--mono)", color:"#0B1F3A", fontWeight:600 }}>{D.km}</span>
+            <span style={{ color:"#C0C8D4" }}>›</span>
+            <span style={{ fontFamily:"var(--mono)", color:"#506070", fontSize:"10.5px" }}>{D.uuid}</span>
+            {error && <span style={{ color:"#E5A100", fontSize:"10px", marginLeft:"8px" }}>⚠ {error}</span>}
+          </div>
+
+          {/* Action cluster */}
+          <div className="actions" style={{ display:"flex", gap:"6px", alignItems:"center", flexShrink:0 }}>
+            <button onClick={handleExport} style={{ padding:"5px 12px", fontSize:"11px", fontWeight:600, background:"#0B1F3A", color:"#FFFFFF", border:"none", borderRadius:"3px", cursor:"pointer" }}>
+              File Annexure III
+            </button>
+            <button style={{ padding:"5px 10px", fontSize:"11px", background:"#FFFFFF", color:"#0B1F3A", border:"1px solid #C0C8D4", borderRadius:"3px", cursor:"pointer" }}>
+              Schedule re-inspection
+            </button>
+            <button onClick={() => setReclassifyOpen(r=>!r)} style={{ padding:"5px 10px", fontSize:"11px", background:"#FFFFFF", color:"#0B1F3A", border:"1px solid #C0C8D4", borderRadius:"3px", cursor:"pointer" }}>
+              Reclassify
+            </button>
+            <button style={{ padding:"5px 10px", fontSize:"11px", background:"#FFFFFF", color:"#0B1F3A", border:"1px solid #C0C8D4", borderRadius:"3px", cursor:"pointer" }}>
+              Print PDF
+            </button>
+            <div style={{ width:"1px", height:"20px", background:"#E5E5E5" }} />
+            <img src="assets/ir-emblem.svg" alt="IR" style={{ width:"24px", height:"24px", objectFit:"contain", opacity:0.8 }} />
+          </div>
+        </header>
+
+        {/* TWO-COLUMN BODY */}
+        <div style={{ flex:1, display:"flex", overflow:"hidden", gap:"0" }}>
+
+          {/* LEFT COLUMN (60%) */}
+          <div className="col-left" style={{ flex:"0 0 60%", overflowY:"auto", padding:"14px 10px 14px 16px" }}>
+
+            {/* A. Identity card */}
+            <Section letter="A" title="Defect identity">
+              <div style={{ display:"flex", gap:"20px", alignItems:"flex-start", flexWrap:"wrap" }}>
+                <div>
+                  <div style={{ fontFamily:"var(--mono)", fontSize:"22px", fontWeight:700, color:"#0B1F3A", letterSpacing:"0.02em" }}>{D.km}</div>
+                  <div style={{ fontFamily:"var(--mono)", fontSize:"12px", color:"#506070", marginTop:"2px" }}>{D.uic}</div>
+                  <div style={{ fontSize:"11px", color:"#5A6475", marginTop:"2px" }}>{D.uicLabel}</div>
+                </div>
+                <div style={{ display:"flex", gap:"8px", alignItems:"center", marginTop:"4px" }}>
+                  <ClassBadge cls={D.currentClass} large />
+                  <span style={{ fontSize:"16px", color:"#C0C8D4" }}>→</span>
+                  <ClassBadge cls={D.predictedClass} large />
+                </div>
+              </div>
+              <div style={{ marginTop:"12px", display:"flex", gap:"8px", flexWrap:"wrap", alignItems:"center" }}>
+                {/* Curve indicator */}
+                <span style={{ fontFamily:"var(--mono)", fontSize:"11px", background:"#F0F4FF", color:"#3A5BC7", border:"1px solid #C0D0F0", borderRadius:"3px", padding:"2px 8px" }}>{D.curve}</span>
+                {/* Detection probes — multi-pill */}
+                {D.probes.map(p => (
+                  <span key={p} style={{ fontFamily:"var(--mono)", fontSize:"11px", background:"#F0F2F5", color:"#0B1F3A", border:"1px solid #C0C8D4", borderRadius:"3px", padding:"2px 8px" }}>{p}</span>
+                ))}
+                {D.probes.length >= 2 && (
+                  <span style={{ fontSize:"10px", color:"#C8102E", background:"#FFF0F2", border:"1px solid #F0B0B8", borderRadius:"3px", padding:"2px 8px" }}>
+                    Para 6.3.1 — multi-probe escalation
+                  </span>
+                )}
+                {/* Cluster badge */}
+                {D.cluster && (
+                  <span style={{ fontSize:"10px", color:"#C8102E", background:"#FFF0F2", border:"1px solid #F0B0B8", borderRadius:"3px", padding:"2px 8px", cursor:"pointer" }}>
+                    Cluster {D.cluster.id} · {D.cluster.count} defects · {D.cluster.span} m ↗
+                  </span>
+                )}
+                <span style={{ fontFamily:"var(--mono)", fontSize:"11px", background:"#F8F9FB", color:"#506070", border:"1px solid #E0E4EA", borderRadius:"3px", padding:"2px 8px" }}>Route {D.route} · {D.section}</span>
+              </div>
+            </Section>
+
+            {/* B. Amplitude chart */}
+            <Section letter="B" title="Amplitude vs GMT — defect growth history">
+              <AmplitudeChart
+                runs={D.runs}
+                projectedRun={D.projectedRun}
+                probes={D.probes}
+                calibRef="70° probe, 12mm hole at 25mm depth (per RDSO SEM-2012)"
+              />
+            </Section>
+
+            {/* C. Inspection history */}
+            <Section letter="C" title="Inspection run history">
+              <InspectionTable runs={D.runs} projectedRun={D.projectedRun} probes={D.probes} />
+            </Section>
+
+            {/* D. Auto-escalation */}
+            <Section letter="D" title="Auto-escalation explanation">
+              <div style={{ padding:"10px 12px", background:"#FFF8E6", border:"1px solid #F0D890", borderRadius:"3px", marginBottom:"8px" }}>
+                <div style={{ fontSize:"10.5px", fontWeight:700, color:"#7A5800", marginBottom:"4px" }}>Para 6.3.1 — Multi-probe detection</div>
+                <div style={{ fontSize:"11px", color:"#5A4200", lineHeight:"1.6" }}>
+                  Detected by <span style={{ fontFamily:"var(--mono)", fontWeight:600 }}>70°CF</span> AND <span style={{ fontFamily:"var(--mono)", fontWeight:600 }}>70°GF</span> in the run of 18 Jan 2025, both meeting OBS amplitude threshold (30%FSH). Per Para 6.3.1, detection by two independent probes at the same location mandates classification at IMR regardless of individual probe amplitude. Current classification held at OBS — pending AEN confirmation.
+                </div>
+              </div>
+              <div style={{ padding:"10px 12px", background:"#FFF0F2", border:"1px solid #F0B0B8", borderRadius:"3px" }}>
+                <div style={{ fontSize:"10.5px", fontWeight:700, color:"#8A0020", marginBottom:"4px" }}>Para 6.3.2 — 4 m cluster (predicted)</div>
+                <div style={{ fontSize:"11px", color:"#6A0018", lineHeight:"1.6" }}>
+                  Within 3.2 m of <span style={{ fontFamily:"var(--mono)", fontWeight:600 }}>00482-12-06</span> (UIC 112-1.1, OBS). Cluster of 2 defects within 4 m — auto-escalation to IMR applies under Para 6.3.2 once either defect reaches OBS. <a href="#" style={{ color:"#C8102E", fontWeight:600 }}>View cluster ↗</a>
+                </div>
+              </div>
+            </Section>
+
+            {/* E. Peer benchmark */}
+            <Section letter="E" title="Peer benchmark — growth rate comparison">
+              <PeerBenchmark peer={D.peer} />
+            </Section>
+
+            {/* E2. Model outputs — surfaced from Paris-Erdogan + RUL + HistGBM */}
+            {(D.family || D.yrs_to_80 != null) && (
+              <Section letter="E2" title="Growth model outputs (Paris–Erdogan · RUL · HistGBM)">
+                <div style={{ background:"#F4F6FF", border:"1px solid #D0D8F0", borderRadius:"4px", padding:"12px 14px", marginBottom:"10px" }}>
+                  <div style={{ fontSize:"9.5px", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", color:"#506070", marginBottom:"10px" }}>Paris–Erdogan Family Model</div>
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"10px" }}>
+                    <div><div style={{ fontSize:"8.5px", color:"#8A95A3" }}>Family</div><div style={{ fontFamily:"var(--mono)", fontSize:"12px", fontWeight:700, color:"#0B1F3A" }}>{D.family||"—"}</div></div>
+                    <div><div style={{ fontSize:"8.5px", color:"#8A95A3" }}>C (coefficient)</div><div style={{ fontFamily:"var(--mono)", fontSize:"12px", fontWeight:700, color:"#FF7A1A" }}>{D.fam_C ? Number(D.fam_C).toExponential(2) : "—"}</div></div>
+                    <div><div style={{ fontSize:"8.5px", color:"#8A95A3" }}>m (exponent)</div><div style={{ fontFamily:"var(--mono)", fontSize:"12px", fontWeight:700, color:"#FF7A1A" }}>{D.fam_m ? Number(D.fam_m).toFixed(2) : "—"}</div></div>
+                    <div><div style={{ fontSize:"8.5px", color:"#8A95A3" }}>Own slope</div><div style={{ fontFamily:"var(--mono)", fontSize:"12px", fontWeight:700, color: D.own_slope>2?"#C8102E":D.own_slope>0.5?"#E5A100":"#1F7A4D" }}>{D.own_slope!=null ? (D.own_slope>0?"+":"")+Number(D.own_slope).toFixed(3)+" %/GMT" : "—"}</div></div>
+                    <div><div style={{ fontSize:"8.5px", color:"#8A95A3" }}>RUL → 80%FSH</div><div style={{ fontFamily:"var(--mono)", fontSize:"12px", fontWeight:700, color: (D.yrs_to_80||99)<1?"#C8102E":(D.yrs_to_80||99)<3?"#E5A100":"#1F7A4D" }}>{D.latest_amp>=80?"Already ≥80%":D.yrs_to_80!=null?Number(D.yrs_to_80).toFixed(1)+" yr":"Stable"}</div></div>
+                    <div><div style={{ fontSize:"8.5px", color:"#8A95A3" }}>Predicted IMR date</div><div style={{ fontFamily:"var(--mono)", fontSize:"12px", fontWeight:700, color:"#C8102E" }}>{D.predicted_imr_date||"—"}</div></div>
+                  </div>
+                </div>
+                {/* RUL milestones */}
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"8px", marginBottom:"10px" }}>
+                  {[
+                    {label:"→ 30%FSH (OBS trigger)", yrs: D.yrs_to_60, color:"#E5A100"},
+                    {label:"→ 60%FSH (IMR trigger, Annex II-A)", yrs: D.yrs_to_60, color:"#C8102E"},
+                    {label:"→ 80%FSH (Immediate, Para 6.2.3)", yrs: D.yrs_to_80, color:"#C8102E"},
+                  ].map(m=>(
+                    <div key={m.label} style={{ padding:"8px 10px", background:"#FFF", border:"1px solid #E5E5E5", borderRadius:"3px" }}>
+                      <div style={{ fontSize:"8.5px", color:"#8A95A3", marginBottom:"4px" }}>{m.label}</div>
+                      <div style={{ fontFamily:"var(--mono)", fontSize:"13px", fontWeight:700, color: m.yrs!=null&&m.yrs<2?m.color:"#1F7A4D" }}>
+                        {m.yrs!=null ? Number(m.yrs).toFixed(1)+" yr" : "—"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {/* HistGBM next reading */}
+                {D.predNextAmp != null && (
+                  <div style={{ padding:"8px 12px", background:"#F0F2F5", border:"1px solid #D8DCE3", borderRadius:"3px", fontSize:"11px", color:"#506070" }}>
+                    <strong>HistGBM next-reading prediction:</strong>{" "}
+                    <span style={{ fontFamily:"var(--mono)", fontWeight:700, color:"#0B1F3A", fontSize:"12px" }}>{D.predNextAmp}%FSH</span>
+                    <span style={{ color:"#8A95A3", marginLeft:"6px" }}>(persistence baseline: {D.predBaseline}%FSH · assumes ~1yr/30GMT ahead)</span>
+                  </div>
+                )}
+                <div style={{ fontSize:"9px", color:"#8A95A3", marginTop:"8px" }}>
+                  <a href="Model.html" style={{ color:"#3e9dd6", textDecoration:"none" }}>View model scorecard and family curves →</a>
+                </div>
+              </Section>
+            )}
+
+          </div>
+
+          {/* RIGHT COLUMN (40%) */}
+          <div className="col-right" style={{ flex:"0 0 40%", overflowY:"auto", padding:"14px 16px 14px 6px", display:"flex", flexDirection:"column" }}>
+
+            {/* F. RDSO SLA compliance */}
+            <Section letter="F" title="RDSO SLA compliance — Active OBS / Predicted IMR">
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px", marginBottom:"10px" }}>
+                {[
+                  { label:"24-hr Joggled FP", labelHi:"24 घंटे जॉगल्ड FP", status:D.sla24hFP },
+                  { label:"3-day Replacement", labelHi:"3 दिन प्रतिस्थापन", status:D.sla3dReplace },
+                ].map(s => {
+                  const col = s.status==="overdue"?"#C8102E":s.status==="done"?"#1F7A4D":"#A37000";
+                  const bg = s.status==="overdue"?"#FFF0F2":s.status==="done"?"#F0FAF5":"#FFFBF0";
+                  const bd = s.status==="overdue"?"#F0B0B8":s.status==="done"?"#A0D8BC":"#F0D890";
+                  return (
+                    <div key={s.label} style={{ padding:"8px 10px", background:bg, border:`1px solid ${bd}`, borderRadius:"3px" }}>
+                      <div style={{ fontSize:"9px", color:"#8A95A3", marginBottom:"2px" }}>{s.label}</div>
+                      {tweaks.showHindi && <div style={{ fontSize:"8px", color:"#C0CACE", marginBottom:"3px" }}>{s.labelHi}</div>}
+                      <div style={{ fontSize:"13px", fontWeight:700, color:col }}>
+                        {s.status==="overdue"?"OVERDUE":s.status==="done"?"DONE":"PENDING"}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize:"11px", color:"#506070", marginBottom:"8px", padding:"6px 8px", background:"#F8F9FB", border:"1px solid #E5E5E5", borderRadius:"3px" }}>
+                Speed restriction: <strong style={{ color:"#C8102E" }}>None active — required by Para 6.4 upon IMR classification</strong>
+              </div>
+              {/* Compliance toggles */}
+              <div style={{ display:"flex", flexDirection:"column", gap:"6px" }}>
+                {[
+                  { label:"Three-red-cross marking confirmed", val:markingConfirmed, set:setMarkingConfirmed },
+                  { label:"Joggled fish plate in place", val:fpProvided, set:setFpProvided },
+                ].map(t => (
+                  <label key={t.label} style={{ display:"flex", alignItems:"center", gap:"8px", cursor:"pointer", fontSize:"11px", color:"#3A4A5A" }}>
+                    <input type="checkbox" checked={t.val} onChange={e => t.set(e.target.checked)} style={{ width:"14px", height:"14px", accentColor:"#0B1F3A" }} />
+                    {t.label}
+                  </label>
+                ))}
+              </div>
+            </Section>
+
+            {/* G. Track metadata */}
+            <Section letter="G" title="Track metadata — Annexure III / IV">
+              {/* Track construction */}
+              <div style={{ fontSize:"9px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:"6px" }}>Track construction</div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0 16px", marginBottom:"10px" }}>
+                {[
+                  ["Rail section", D.section], ["Grade", D.grade],
+                  ["Rolling mark", D.rollingMark], ["Hot stamping", D.hotStamping],
+                  ["Year laid (P)", D.yearLaid], ["Years in service", D.yearsService],
+                  ["Sleeper type", D.sleeperType], ["Fittings", D.sleeperFittings],
+                  ["Sleeper density", `${D.sleeperDensity}/km`], ["Ballast cushion", `${D.ballastCushion} mm`],
+                  ["Route class", `Route ${D.route}`], ["Max speed", `${D.maxSpeed} km/h`],
+                  ["Max axle load", `${D.maxAxleLoad} t`], ["Track regime", D.trackRegime],
+                ].map(([k,v]) => (
+                  <div key={k} className="meta-row">
+                    <span className="meta-key">{k}</span>
+                    <span className="meta-val mono">{v}</span>
+                  </div>
+                ))}
+              </div>
+              {/* Track regime */}
+              <div style={{ fontSize:"9px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:"6px", marginTop:"4px" }}>CWR regime</div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0 16px", marginBottom:"10px" }}>
+                {[
+                  ["Last destress date", D.lastDestress], ["Destress temp", D.destressTemp],
+                ].map(([k,v]) => (
+                  <div key={k} className="meta-row">
+                    <span className="meta-key">{k}</span>
+                    <span className="meta-val mono">{v}</span>
+                  </div>
+                ))}
+              </div>
+              {/* Surrounding context */}
+              <div style={{ fontSize:"9px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:"6px", marginTop:"4px" }}>Surrounding context</div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0 16px" }}>
+                {[
+                  ["Nearest weld", `${D.nearestWeld} m`],
+                  ["Nearest joint", `${D.nearestJoint} m`],
+                  ["Nearest bridge", `${D.nearestBridge} m`],
+                  ["Nearest tunnel", D.nearestTunnel ? `${D.nearestTunnel} m` : "None within 500 m"],
+                ].map(([k,v]) => (
+                  <div key={k} className="meta-row">
+                    <span className="meta-key">{k}</span>
+                    <span className="meta-val mono">{v}</span>
+                  </div>
+                ))}
+              </div>
+            </Section>
+
+            {/* H. Cluster context */}
+            {D.cluster && (
+              <Section letter="H" title={`Cluster context — ${D.cluster.id}`}>
+                <ClusterSchematic defect={D} peers={D.clusterPeers} />
+                <div style={{ marginTop:"8px", fontSize:"10.5px", color:"#5A6475" }}>
+                  Para 6.3.2: 2 defects within {D.cluster.span} m → both escalated to IMR. Single rail piece replacement covers cluster span + 5.5 m extension.
+                </div>
+                <button style={{ marginTop:"8px", fontSize:"11px", color:"#0B1F3A", background:"#F0F4FF", border:"1px solid #C0D0F0", borderRadius:"3px", padding:"4px 10px", cursor:"pointer" }}>
+                  Open Cluster View ↗
+                </button>
+              </Section>
+            )}
+
+            {/* I. Action panel */}
+            <Section letter="I" title="Actions">
+              <div style={{ display:"flex", flexDirection:"column", gap:"7px" }}>
+                <button onClick={handleExport} style={{ padding:"9px 14px", fontSize:"12px", fontWeight:600, background:"#0B1F3A", color:"#FFFFFF", border:"none", borderRadius:"3px", cursor:"pointer", textAlign:"left" }}>
+                  File Annexure III — pre-filled from system state
+                </button>
+                <button style={{ padding:"9px 14px", fontSize:"12px", background:"#FFFFFF", color:"#0B1F3A", border:"1px solid #C0C8D4", borderRadius:"3px", cursor:"pointer", textAlign:"left" }}>
+                  Reclassify — manual override with reason capture
+                </button>
+                <button style={{ padding:"9px 14px", fontSize:"12px", background:"#FFFFFF", color:"#0B1F3A", border:"1px solid #C0C8D4", borderRadius:"3px", cursor:"pointer", textAlign:"left" }}>
+                  Schedule re-inspection earlier — flag for next run
+                </button>
+                <button style={{ padding:"9px 14px", fontSize:"12px", background:"#FFFFFF", color:"#1F7A4D", border:"1px solid #A0D8BC", borderRadius:"3px", cursor:"pointer", textAlign:"left" }}>
+                  Mark as resolved — capture work order ref
+                </button>
+                <div style={{ marginTop:"2px", fontSize:"9.5px", color:"#8A95A3" }}>All actions are written to the audit trail.</div>
+              </div>
+            </Section>
+
+            {/* J. Audit trail */}
+            <Section letter="J" title="Audit trail" collapsible defaultOpen={tweaks.showAudit}>
+              <div>
+                {[...D.audit].reverse().map((e, i) => (
+                  <div key={i} className="audit-row">
+                    <span className="audit-ts">{e.ts}</span>
+                    <span className="audit-actor" style={{ color: e.actor==="System"?"#3A5BC7":"#506070" }}>{e.actor}</span>
+                    <span className="audit-msg">{e.msg}</span>
+                  </div>
+                ))}
+              </div>
+            </Section>
+
+          </div>
+        </div>
+      </div>
+
+      {/* Export toast */}
+      {exportMsg && (
+        <div style={{ position:"fixed", bottom:"20px", left:"50%", transform:"translateX(-50%)", background:"#0B1F3A", color:"#FFFFFF", padding:"9px 18px", borderRadius:"4px", fontSize:"11.5px", fontWeight:500, boxShadow:"0 4px 16px rgba(0,0,0,0.25)", zIndex:1000 }}>
+          {exportMsg}
+        </div>
+      )}
+
+      {/* Reclassify modal */}
+      {reclassifyOpen && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(11,31,58,0.5)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:400 }}>
+          <div style={{ background:"#FFFFFF", borderRadius:"4px", padding:"24px", width:"420px", boxShadow:"0 8px 32px rgba(0,0,0,0.2)" }}>
+            <div style={{ fontSize:"13px", fontWeight:700, color:"#0B1F3A", marginBottom:"14px" }}>Reclassify defect — manual override</div>
+            <div style={{ marginBottom:"10px" }}>
+              <label style={{ fontSize:"10.5px", color:"#8A95A3", display:"block", marginBottom:"4px" }}>New classification</label>
+              <select style={{ width:"100%", padding:"7px 10px", fontSize:"12px", border:"1px solid #D8DCE3", borderRadius:"3px", fontFamily:"IBM Plex Mono" }}>
+                <option>IMR</option><option>OBS</option><option>GCC</option><option>Monitor</option>
+              </select>
+            </div>
+            <div style={{ marginBottom:"14px" }}>
+              <label style={{ fontSize:"10.5px", color:"#8A95A3", display:"block", marginBottom:"4px" }}>Reason (required — written to audit trail)</label>
+              <select style={{ width:"100%", padding:"7px 10px", fontSize:"12px", border:"1px solid #D8DCE3", borderRadius:"3px" }}>
+                <option>AEN test-check — confirmed classification</option>
+                <option>AEN test-check — disputed, reclassified</option>
+                <option>Re-inspection result — amplitude revised</option>
+                <option>Machine calibration error — run voided</option>
+                <option>Other (add note below)</option>
+              </select>
+            </div>
+            <div style={{ display:"flex", gap:"8px" }}>
+              <button onClick={() => setReclassifyOpen(false)} style={{ flex:1, padding:"8px", fontSize:"12px", fontWeight:600, background:"#0B1F3A", color:"#FFFFFF", border:"none", borderRadius:"3px", cursor:"pointer" }}>Confirm reclassification</button>
+              <button onClick={() => setReclassifyOpen(false)} style={{ padding:"8px 14px", fontSize:"12px", background:"#FFFFFF", color:"#506070", border:"1px solid #D8DCE3", borderRadius:"3px", cursor:"pointer" }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tweaks */}
+      {tweaksVisible && (
+        <TweaksPanel onClose={() => { setTweaksVisible(false); window.parent.postMessage({type:"__edit_mode_dismissed"}, "*"); }}>
+          <TweakSection title="Display">
+            <TweakToggle label="Hindi labels" value={tweaks.showHindi} onChange={v => setTweak("showHindi", v)} />
+            <TweakToggle label="Audit trail open by default" value={tweaks.showAudit} onChange={v => setTweak("showAudit", v)} />
+          </TweakSection>
+        </TweaksPanel>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+<script src="prototype-nav.js"></script>
+</body>
+</html>

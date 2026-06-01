@@ -1,0 +1,206 @@
+cluster_id,railway,section,line,chainage_start_m,chainage_end_m,span_m,n_defects,max_amp
+0,Central Railway,Londa-Miraj,DN,660006.01,660009.43,3.4200000000419095,2,32.0
+1,Central Railway,Londa-Miraj,DN,674423.0,674425.0,2.0,2,33.0
+2,Central Railway,Londa-Miraj,UP,648098.0,648099.0,1.0,2,71.0
+3,Central Railway,Londa-Miraj,UP,652726.0,652728.0,2.0,2,81.0
+4,Central Railway,Londa-Miraj,UP,721386.0,721388.0,2.0,2,87.0
+5,Central Railway,Londa-Miraj,UP,726150.0,726154.0,4.0,2,93.0
+6,East Central Railway,Bachhwara-Samastipur,DN,12234.0,12235.2,1.2000000000007276,2,26.0
+7,East Central Railway,Bachhwara-Samastipur,DN,26182.0,26182.0,0.0,2,28.0
+8,East Central Railway,Bachhwara-Samastipur,UP,17454.65,17458.2,3.5499999999992724,2,33.0
+9,East Central Railway,Bachhwara-Samastipur,UP,24954.5,24954.5,0.0,2,25.0
+10,East Central Railway,Barauni-Hajipur,DN,183767.32,183769.85,2.529999999998836,2,37.0
+11,East Central Railway,Barauni-Hajipur,DN,183869.1,183871.2,2.1000000000058208,2,26.0
+12,East Central Railway,Barauni-Hajipur,DN,184128.13,184130.95,2.820000000006985,2,37.0
+13,East Central Railway,Barauni-Hajipur,DN,186632.5,186632.6,0.10000000000582077,2,28.0
+14,East Central Railway,Barauni-Hajipur,DN,186732.7,186734.5,1.7999999999883585,2,35.0
+15,East Central Railway,Barauni-Hajipur,DN,186755.0,186758.0,3.0,2,29.0
+16,East Central Railway,Barauni-Hajipur,DN,187016.15,187016.25,0.10000000000582077,2,35.0
+17,East Central Railway,Barauni-Hajipur,DN,187425.0,187430.2,5.2000000000116415,3,25.0
+18,East Central Railway,Barauni-Hajipur,DN,187868.9,187868.92,0.02000000001862645,2,30.0
+19,East Central Railway,Barauni-Hajipur,DN,188110.0,188110.0,0.0,2,27.0
+20,East Central Railway,Barauni-Hajipur,DN,188157.75,188157.75,0.0,2,28.0
+21,East Central Railway,Barauni-Hajipur,DN,189005.5,189007.3,1.7999999999883585,2,26.0
+22,East Central Railway,Barauni-Hajipur,DN,189040.0,189042.35,2.3500000000058208,2,27.0
+23,East Central Railway,Barauni-Hajipur,DN,190680.0,190680.0,0.0,2,30.0
+24,East Central Railway,Barauni-Hajipur,DN,191478.93,191479.0,0.07000000000698492,2,26.0
+25,East Central Railway,Barauni-Hajipur,DN,191595.78,191595.9,0.11999999999534339,2,25.0
+26,East Central Railway,Barauni-Hajipur,DN,192871.4,192873.6,2.2000000000116415,2,43.0
+27,East Central Railway,Barauni-Hajipur,DN,193223.48,193224.8,1.319999999977881,2,31.0
+28,East Central Railway,Barauni-Hajipur,DN,193236.48,193236.8,0.3199999999778811,2,32.0
+29,East Central Railway,Barauni-Hajipur,DN,193309.4,193312.0,2.6000000000058208,2,35.0
+30,East Central Railway,Barauni-Hajipur,DN,193316.6,193317.0,0.39999999999417923,2,43.0
+31,East Central Railway,Barauni-Hajipur,DN,193730.0,193730.1,0.10000000000582077,2,29.0
+32,East Central Railway,Barauni-Hajipur,DN,193895.0,193896.0,1.0,2,30.0
+33,East Central Railway,Barauni-Hajipur,DN,193901.0,193901.0,0.0,2,30.0
+34,East Central Railway,Barauni-Hajipur,DN,193912.15,193913.0,0.8500000000058208,2,32.0
+35,East Central Railway,Barauni-Hajipur,DN,194333.6,194336.9,3.2999999999883585,2,39.0
+36,East Central Railway,Barauni-Hajipur,DN,195088.0,195091.0,3.0,2,33.0
+37,East Central Railway,Barauni-Hajipur,DN,195107.2,195107.3,0.09999999997671694,2,36.0
+38,East Central Railway,Barauni-Hajipur,DN,195112.2,195112.3,0.09999999997671694,2,36.0
+39,East Central Railway,Barauni-Hajipur,DN,195131.7,195131.8,0.09999999997671694,2,33.0
+40,East Central Railway,Barauni-Hajipur,DN,195209.4,195210.77,1.3699999999953434,2,28.0
+41,East Central Railway,Barauni-Hajipur,DN,195281.0,195282.2,1.2000000000116415,2,34.0
+42,East Central Railway,Barauni-Hajipur,DN,195303.55,195304.55,1.0,2,30.0
+43,East Central Railway,Barauni-Hajipur,DN,195741.5,195742.0,0.5,2,30.0
+44,East Central Railway,Barauni-Hajipur,UP,180025.7,180029.0,3.2999999999883585,2,28.0
+45,East Central Railway,Barauni-Hajipur,UP,181933.95,181933.95,0.0,2,32.0
+46,East Central Railway,Barauni-Hajipur,UP,182043.0,182044.5,1.5,2,26.0
+47,East Central Railway,Barauni-Hajipur,UP,192461.0,192461.1,0.10000000000582077,2,26.0
+48,East Central Railway,Barauni-Hajipur,UP,192476.0,192476.1,0.10000000000582077,2,28.0
+49,East Central Railway,Barauni-Hajipur,UP,193106.5,193106.5,0.0,2,28.0
+50,East Central Railway,Barauni-Hajipur,UP,193319.3,193319.9,0.6000000000058208,2,26.0
+51,East Central Railway,Khagaria - Samastipur,SL,4229.0,4230.35,1.3500000000003638,2,37.0
+52,North Eastern Railway,Gonda Jn-Burhwal Jn,DN,679121.0,679125.2,4.199999999953434,3,20.0
+53,North Eastern Railway,Gonda Jn-Burhwal Jn,DN,688929.0,688932.4,3.400000000023283,2,29.0
+54,North Eastern Railway,Gonda Jn-Burhwal Jn,DN,690478.0,690478.2,0.19999999995343387,2,25.0
+55,North Eastern Railway,Gonda Jn-Burhwal Jn,DN,694464.2,694465.0,0.8000000000465661,2,31.0
+56,North Eastern Railway,Gonda Jn-Burhwal Jn,DN,694964.6,694967.8,3.200000000069849,2,25.0
+57,North Eastern Railway,Gonda Jn-Burhwal Jn,DN,695916.6,695920.0,3.400000000023283,2,24.0
+58,North Eastern Railway,Gonda Jn-Burhwal Jn,DN,699323.0,699325.0,2.0,2,40.0
+59,North Eastern Railway,Gonda Jn-Burhwal Jn,DN,699349.6,699350.6,1.0,2,23.0
+60,North Eastern Railway,Gonda Jn-Burhwal Jn,DN,699375.0,699375.0,0.0,2,26.0
+61,North Eastern Railway,Gonda Jn-Burhwal Jn,DN,701188.8,701188.8,0.0,2,23.0
+62,North Eastern Railway,Gonda Jn-Burhwal Jn,DN,701343.0,701343.0,0.0,2,25.0
+63,North Eastern Railway,Gonda Jn-Burhwal Jn,DN,701652.0,701654.0,2.0,2,23.0
+64,North Eastern Railway,Gonda Jn-Burhwal Jn,IIIrd,665483.0,665483.3,0.30000000004656613,2,25.0
+65,North Eastern Railway,Gonda Jn-Burhwal Jn,IIIrd,668623.0,668625.0,2.0,2,35.0
+66,North Eastern Railway,Gonda Jn-Burhwal Jn,IIIrd,676937.95,676937.95,0.0,2,31.0
+67,North Eastern Railway,Gonda Jn-Burhwal Jn,IIIrd,677254.25,677254.25,0.0,2,29.0
+68,North Eastern Railway,Gonda Jn-Burhwal Jn,UP,657975.0,657975.0,0.0,2,32.0
+69,North Western Railway,Jaipur-Phulera,DN,244614.17,244615.0,0.8299999999871943,2,40.0
+70,North Western Railway,Jaipur-Phulera,DN,246869.0,246869.0,0.0,2,47.0
+71,North Western Railway,Jaipur-Phulera,DN,249841.0,249842.5,1.5,2,70.0
+72,North Western Railway,Jaipur-Phulera,DN,250092.0,250094.0,2.0,2,62.0
+73,North Western Railway,Jaipur-Phulera,DN,251176.5,251180.0,3.5,2,60.0
+74,North Western Railway,Jaipur-Phulera,DN,251214.0,251218.0,4.0,2,25.0
+75,North Western Railway,Jaipur-Phulera,DN,251533.0,251533.0,0.0,2,52.0
+76,North Western Railway,Jaipur-Phulera,DN,255244.5,255245.0,0.5,2,70.0
+77,North Western Railway,Jaipur-Phulera,DN,255346.0,255346.0,0.0,2,100.0
+78,North Western Railway,Jaipur-Phulera,DN,259338.0,259342.0,4.0,2,50.0
+79,North Western Railway,Jaipur-Phulera,DN,260830.0,260830.5,0.5,2,50.0
+80,North Western Railway,Jaipur-Phulera,DN,265597.0,265597.0,0.0,2,45.0
+81,North Western Railway,Jaipur-Phulera,DN,268030.0,268033.0,3.0,2,50.0
+82,North Western Railway,Jaipur-Phulera,DN,270033.0,270036.0,3.0,2,100.0
+83,North Western Railway,Jaipur-Phulera,DN,271244.0,271245.27,1.2700000000186265,2,50.0
+84,North Western Railway,Jaipur-Phulera,DN,287327.0,287327.0,0.0,2,40.0
+85,North Western Railway,Jaipur-Phulera,UP,243199.0,243200.0,1.0,2,80.0
+86,North Western Railway,Jaipur-Phulera,UP,248067.0,248071.0,4.0,2,48.0
+87,North Western Railway,Jaipur-Phulera,UP,257551.0,257555.0,4.0,2,30.0
+88,North Western Railway,Jaipur-Phulera,UP,269371.0,269373.0,2.0,2,50.0
+89,North Western Railway,Jaipur-Phulera,UP,270300.0,270300.7,0.7000000000116415,2,40.0
+90,North Western Railway,Jaipur-Phulera,UP,276788.0,276790.0,2.0,2,50.0
+91,North Western Railway,Jaipur-Phulera,UP,287633.0,287637.0,4.0,2,30.0
+92,North Western Railway,Jaipur-Phulera,UP,294242.0,294244.0,2.0,2,40.0
+93,North Western Railway,Jodhpur-Jaisalmer,SL,9262.6,9262.6,0.0,2,38.0
+94,North Western Railway,Jodhpur-Jaisalmer,SL,13840.0,13840.0,0.0,2,55.0
+95,North Western Railway,Jodhpur-Jaisalmer,SL,14198.0,14199.0,1.0,2,51.0
+96,North Western Railway,Jodhpur-Jaisalmer,SL,16283.0,16283.0,0.0,2,80.0
+97,North Western Railway,Jodhpur-Jaisalmer,SL,20709.7,20709.7,0.0,2,47.0
+98,North Western Railway,Jodhpur-Jaisalmer,SL,23930.65,23930.65,0.0,2,51.0
+99,North Western Railway,Jodhpur-Jaisalmer,SL,24266.26,24266.4,0.1400000000030559,2,40.0
+100,North Western Railway,Jodhpur-Jaisalmer,SL,29559.3,29560.5,1.2000000000007276,2,25.0
+101,North Western Railway,Jodhpur-Jaisalmer,SL,32902.0,32905.0,3.0,2,27.0
+102,North Western Railway,Jodhpur-Jaisalmer,SL,33763.27,33763.54,0.27000000000407454,2,56.0
+103,North Western Railway,Jodhpur-Jaisalmer,SL,33931.0,33931.4,0.4000000000014552,2,48.0
+104,North Western Railway,Jodhpur-Jaisalmer,SL,39314.79,39315.15,0.3600000000005821,2,28.0
+105,North Western Railway,Jodhpur-Jaisalmer,SL,41130.65,41132.96,2.3099999999976717,2,53.0
+106,North Western Railway,Jodhpur-Jaisalmer,SL,41193.45,41194.15,0.7000000000043656,2,49.0
+107,North Western Railway,Jodhpur-Jaisalmer,SL,42387.65,42387.7,0.049999999995634425,2,40.0
+108,North Western Railway,Jodhpur-Jaisalmer,SL,43029.05,43029.95,0.8999999999941792,2,45.0
+109,North Western Railway,Jodhpur-Jaisalmer,SL,44647.44,44648.07,0.6299999999973807,2,32.0
+110,North Western Railway,Jodhpur-Jaisalmer,SL,54129.7,54129.92,0.22000000000116415,2,46.0
+111,North Western Railway,Jodhpur-Jaisalmer,SL,57080.0,57083.92,3.9199999999982538,2,49.0
+112,North Western Railway,Jodhpur-Jaisalmer,SL,63493.0,63493.0,0.0,2,40.0
+113,North Western Railway,Jodhpur-Jaisalmer,SL,64493.0,64493.0,0.0,2,39.0
+114,North Western Railway,Jodhpur-Jaisalmer,SL,88937.56,88938.1,0.5400000000081491,2,26.0
+115,North Western Railway,Jodhpur-Jaisalmer,SL,89365.1,89366.1,1.0,2,35.0
+116,North Western Railway,Jodhpur-Jaisalmer,SL,93610.36,93610.52,0.16000000000349246,2,51.0
+117,North Western Railway,Jodhpur-Jaisalmer,SL,93848.0,93850.8,2.8000000000029104,2,33.0
+118,North Western Railway,Jodhpur-Jaisalmer,SL,94572.18,94572.28,0.10000000000582077,2,52.0
+119,North Western Railway,Jodhpur-Jaisalmer,SL,134670.0,134670.0,0.0,2,45.0
+120,North Western Railway,Jodhpur-Jaisalmer,SL,233471.23,233474.1,2.8699999999953434,2,40.0
+121,North Western Railway,Jodhpur-Jaisalmer,SL,235765.5,235767.1,1.6000000000058208,2,28.0
+122,North Western Railway,Jodhpur-Jaisalmer,SL,242179.4,242179.4,0.0,2,50.0
+123,Northeast Frontier Railway,Aluabari Road-Barsoi,DN,68501.0,68501.0,0.0,2,30.0
+124,Northeast Frontier Railway,Aluabari Road-Barsoi,DN,71204.95,71205.07,0.1200000000098953,2,30.0
+125,Northeast Frontier Railway,Aluabari Road-Barsoi,DN,72826.29,72826.77,0.4800000000104774,2,30.0
+126,Northeast Frontier Railway,Aluabari Road-Barsoi,DN,77917.68,77917.68,0.0,2,25.0
+127,Northeast Frontier Railway,Aluabari Road-Barsoi,DN,90518.0,90518.0,0.0,2,25.0
+128,Northeast Frontier Railway,Aluabari Road-Barsoi,DN,100117.71,100119.88,2.1699999999982538,2,25.0
+129,Northeast Frontier Railway,Aluabari Road-Barsoi,DN,101445.0,101445.0,0.0,2,40.0
+130,Northeast Frontier Railway,Aluabari Road-Barsoi,DN,131740.0,131743.0,3.0,2,25.0
+131,Northeast Frontier Railway,Aluabari Road-Barsoi,UP,82867.38,82867.58,0.19999999999708962,2,25.0
+132,Northeast Frontier Railway,Aluabari Road-Barsoi,UP,83249.55,83249.55,0.0,2,40.0
+133,Northeast Frontier Railway,Aluabari Road-Barsoi,UP,98230.9,98230.9,0.0,2,25.0
+134,Northeast Frontier Railway,Aluabari Road-Barsoi,UP,105815.9,105818.85,2.9500000000116415,2,25.0
+135,Northeast Frontier Railway,Aluabari Road-Barsoi,UP,114545.0,114545.0,0.0,2,25.0
+136,Northeast Frontier Railway,Aluabari Road-Barsoi,UP,125192.0,125192.0,0.0,2,30.0
+137,Northeast Frontier Railway,Aluabari Road-Barsoi,UP,126930.34,126930.4,0.059999999997671694,2,25.0
+138,Northeast Frontier Railway,Aluabari Road-Barsoi,UP,129914.9,129915.1,0.20000000001164153,2,25.0
+139,Northeast Frontier Railway,New Mal-Alipurdwar Jn,SL,160957.5,160960.0,2.5,2,45.0
+140,Northern Railway,Lucknow-Unnao,UP,18103.0,18103.0,0.0,2,35.0
+141,Northern Railway,Unnao-Kanpur Central,DN,64217.0,64217.0,0.0,2,30.0
+142,South Western Railway,Bangalore City-Mysore,DN,22522.0,22522.0,0.0,2,40.0
+143,South Western Railway,Bangalore City-Mysore,DN,28650.0,28650.0,0.0,2,40.0
+144,South Western Railway,Bangalore City-Mysore,DN,118686.0,118686.0,0.0,2,30.0
+145,South Western Railway,Bangalore City-Mysore,UP,92.0,92.0,0.0,2,100.0
+146,South Western Railway,Bangalore City-Mysore,UP,386.6,387.15,0.5499999999999545,2,59.0
+147,South Western Railway,Bangalore City-Mysore,UP,436.0,438.0,2.0,2,45.0
+148,South Western Railway,Bangalore City-Mysore,UP,16212.0,16212.0,0.0,2,100.0
+149,South Western Railway,Bangalore City-Mysore,UP,16604.0,16606.0,2.0,2,100.0
+150,South Western Railway,Bangalore City-Mysore,UP,18242.0,18243.0,1.0,2,50.0
+151,South Western Railway,Bangalore City-Mysore,UP,18380.0,18380.5,0.5,2,60.0
+152,South Western Railway,Bangalore City-Mysore,UP,19491.0,19491.69,0.6899999999986903,2,100.0
+153,South Western Railway,Bangalore City-Mysore,UP,19543.0,19544.0,1.0,2,60.0
+154,South Western Railway,Bangalore City-Mysore,UP,19980.0,19984.0,4.0,2,80.0
+155,South Western Railway,Bangalore City-Mysore,UP,20725.0,20725.0,0.0,2,90.0
+156,South Western Railway,Bangalore City-Mysore,UP,20753.0,20754.0,1.0,2,80.0
+157,South Western Railway,Bangalore City-Mysore,UP,21000.0,21000.0,0.0,2,60.0
+158,South Western Railway,Bangalore City-Mysore,UP,21007.0,21009.0,2.0,2,50.0
+159,South Western Railway,Bangalore City-Mysore,UP,21653.0,21655.0,2.0,2,80.0
+160,South Western Railway,Bangalore City-Mysore,UP,22170.0,22172.0,2.0,2,100.0
+161,South Western Railway,Bangalore City-Mysore,UP,26733.0,26733.0,0.0,2,40.0
+162,South Western Railway,Bangalore City-Mysore,UP,29319.39,29323.0,3.610000000000582,2,100.0
+163,South Western Railway,Bangalore City-Mysore,UP,29820.0,29823.0,3.0,2,62.0
+164,South Western Railway,Bangalore City-Mysore,UP,90378.0,90378.0,0.0,2,31.0
+165,South Western Railway,Bangalore City-Mysore,UP,98861.1,98861.35,0.25,2,38.0
+166,Southern Railway,Shoranur Jn-Punkunnam,UP,51493.0,51495.82,2.819999999999709,2,30.0
+167,Southern Railway,Shoranur Jn-Punkunnam,UP,51894.62,51894.79,0.16999999999825377,2,35.0
+168,Southern Railway,Shoranur Jn-Punkunnam,UP,52042.13,52044.32,2.1900000000023283,2,50.0
+169,Southern Railway,Shoranur Jn-Punkunnam,UP,93936.83,93940.0,3.1699999999982538,2,75.0
+170,Southern Railway,Shoranur Jn-Punkunnam,UP,100470.0,100470.0,0.0,2,25.0
+171,Western Railway,Samdari Jn- Bhildi,SL,253.0,257.0,4.0,2,35.0
+172,Western Railway,Samdari Jn- Bhildi,SL,628.0,628.0,0.0,2,28.0
+173,Western Railway,Samdari Jn- Bhildi,SL,102235.6,102235.6,0.0,2,44.0
+174,Western Railway,Samdari Jn- Bhildi,SL,104381.43,104381.43,0.0,2,53.0
+175,Western Railway,Samdari Jn- Bhildi,SL,104586.4,104586.4,0.0,2,42.0
+176,Western Railway,Samdari Jn- Bhildi,SL,111628.0,111631.0,3.0,2,51.0
+177,Western Railway,Samdari Jn- Bhildi,SL,114084.04,114084.1,0.06000000001222361,2,54.0
+178,Western Railway,Samdari Jn- Bhildi,SL,122795.15,122795.52,0.3700000000098953,2,58.0
+179,Western Railway,Samdari Jn- Bhildi,SL,123791.0,123793.0,2.0,2,36.0
+180,Western Railway,Samdari Jn- Bhildi,SL,123805.0,123805.0,0.0,2,32.0
+181,Western Railway,Samdari Jn- Bhildi,SL,127921.52,127921.53,0.00999999999476131,2,49.0
+182,Western Railway,Samdari Jn- Bhildi,SL,130041.82,130041.85,0.029999999998835847,2,27.0
+183,Western Railway,Samdari Jn- Bhildi,SL,139969.5,139969.5,0.0,2,37.0
+184,Western Railway,Samdari Jn- Bhildi,SL,140015.0,140017.0,2.0,2,38.0
+185,Western Railway,Samdari Jn- Bhildi,SL,140022.0,140022.0,0.0,2,37.0
+186,Western Railway,Samdari Jn- Bhildi,SL,145672.0,145672.0,0.0,2,23.0
+187,Western Railway,Samdari Jn- Bhildi,SL,163384.0,163386.0,2.0,2,26.0
+188,Western Railway,Samdari Jn- Bhildi,SL,164387.0,164388.0,1.0,2,38.0
+189,Western Railway,Samdari Jn- Bhildi,SL,188880.0,188880.0,0.0,2,45.0
+190,Western Railway,Samdari Jn- Bhildi,SL,189679.0,189679.0,0.0,2,60.0
+191,Western Railway,Samdari Jn- Bhildi,SL,189705.0,189705.0,0.0,2,53.0
+192,Western Railway,Samdari Jn- Bhildi,SL,191022.3,191022.3,0.0,2,52.0
+193,Western Railway,Samdari Jn- Bhildi,SL,191370.0,191371.0,1.0,2,35.0
+194,Western Railway,Samdari Jn- Bhildi,SL,192315.0,192315.6,0.6000000000058208,2,55.0
+195,Western Railway,Samdari Jn- Bhildi,SL,201646.0,201646.0,0.0,2,0.0
+196,Western Railway,Samdari Jn- Bhildi,SL,205082.2,205082.2,0.0,2,44.0
+197,Western Railway,Samdari Jn- Bhildi,SL,206830.0,206830.0,0.0,2,40.0
+198,Western Railway,Samdari Jn- Bhildi,SL,207998.5,207998.5,0.0,2,40.0
+199,Western Railway,Samdari Jn- Bhildi,SL,214113.5,214113.5,0.0,2,35.0
+200,Western Railway,Samdari Jn- Bhildi,SL,214193.0,214193.0,0.0,2,35.0
+201,Western Railway,Samdari Jn- Bhildi,SL,215349.0,215349.0,0.0,2,38.0
+202,Western Railway,Samdari Jn- Bhildi,SL,217776.0,217776.0,0.0,2,36.0
+203,Western Railway,Samdari Jn- Bhildi,SL,221508.0,221508.0,0.0,2,91.0
+204,Western Railway,Samdari Jn- Bhildi,SL,221782.8,221782.8,0.0,2,59.0

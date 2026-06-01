@@ -1,0 +1,24 @@
+{
+  "target": "next inspection %FSH amplitude",
+  "features_numeric": [
+    "amp_prev",
+    "slope_prev",
+    "dN",
+    "dt_days",
+    "gmt_rate"
+  ],
+  "features_categorical": [
+    "asset",
+    "probe",
+    "railway"
+  ],
+  "n_training_transitions": 7088,
+  "n_defects": 3638,
+  "cv": "5-fold GroupKFold (grouped by defect \u2014 no leakage)",
+  "model_mae": 4.886,
+  "model_r2": 0.687,
+  "persistence_mae": 4.752,
+  "persistence_r2": 0.535,
+  "beats_persistence_on_mae": false,
+  "note": "RUL/time-to-threshold predictions live in usfd_predictions.csv (slope-projection method); this model predicts the next-reading amplitude."
+}

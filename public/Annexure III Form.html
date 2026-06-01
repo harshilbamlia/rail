@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Annexure III — Rail/Weld Replacement Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: 'IBM Plex Sans', sans-serif; background: #F0F2F5; color: #1A1A1A; font-size: 13px; }
+:root {
+  --navy: #0B1F3A; --saffron: #FF7A1A;
+  --red: #C8102E; --amber: #E5A100; --green: #1F7A4D;
+  --border: #D8DCE3; --mono: 'IBM Plex Mono', monospace;
+}
+::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-thumb { background: #C0C8D4; border-radius: 3px; }
+
+/* Form primitives */
+.input {
+  width: 100%; padding: 7px 10px;
+  font-family: 'IBM Plex Sans', sans-serif; font-size: 12px;
+  border: 1px solid #D0D5DC; border-radius: 3px;
+  background: #FAFAFA; outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.input:focus { border-color: #0B1F3A; box-shadow: 0 0 0 2px rgba(11,31,58,0.08); background:#fff; }
+.input.mono { font-family: var(--mono); letter-spacing: 0.03em; }
+.input.user-field { background: #FFFDF5; border-color: #E5A100; }
+.input.user-field:focus { border-color: #0B1F3A; background: #fff; }
+.input[disabled], .input.locked { background: #F5F7FA; color: #506070; border-color: #E0E4EA; cursor: not-allowed; }
+select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236A7585'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 9px center; padding-right: 26px; }
+.field-label {
+  font-size: 9.5px; font-weight: 700; color: #4A5568;
+  letter-spacing: 0.05em; text-transform: uppercase;
+  display: flex; align-items: baseline; gap: 5px; margin-bottom: 3px;
+}
+.field-code { font-family: var(--mono); font-size: 8.5px; color: #B0BACA; font-weight: 400; }
+.field-pre { font-size: 8.5px; color: #1F7A4D; font-weight: 600; text-transform: none; letter-spacing: 0; margin-left: auto; }
+.field-usr { font-size: 8.5px; color: #E5A100; font-weight: 600; text-transform: none; letter-spacing: 0; margin-left: auto; }
+.field-wrap { margin-bottom: 12px; }
+
+.section-card { background: #FFFFFF; border: 1px solid #D8DCE3; border-radius: 4px; margin-bottom: 12px; }
+.sec-head {
+  padding: 8px 14px; border-bottom: 1px solid #EAECEF;
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+}
+.sec-body { padding: 14px 16px; }
+.sec-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+@media (max-width: 720px) { .sec-grid { grid-template-columns: 1fr; } }
+
+/* Print */
+@media print {
+  html, body { background: white; font-size: 10.5px; }
+  nav, header.topbar, .no-print { display: none !important; }
+  .print-form { background: white !important; border: none !important; padding: 0 !important; max-width: 100% !important; }
+  .section-card { break-inside: avoid; border: 1px solid #000 !important; margin-bottom: 8px !important; }
+  .sec-body { padding: 8px 10px !important; }
+  .input.locked, .input[disabled] { border: 1px solid #888 !important; }
+  .print-form-header { display: block !important; }
+}
+.print-form-header { display: none; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+/* ─── API CONFIG ────────────────────────────────────────────────── */
+const API_BASE = window.location.origin;
+const api = (path) => fetch(API_BASE + path).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+
+/* ─── PRE-FILLED DEFECT STATE (default / offline fallback) ──────── */
+const PREFILL = {
+  refNo:     "ANN3/CR/MUM/2026/00847",
+  km:        "00482-12-04",
+  division:  "Mumbai — CR",
+  sejeCode:  "CSMT",
+  blockSection: "CSMT–Thane",
+  line:      "1",     // UP
+  gauge:     "1",     // BG
+  railNo:    "04",
+  railSide:  "2",     // LH
+  curve:     "C4",
+  curvePos:  "2",     // Outer
+  gmtBand:   "3",     // 51–100
+  dateToday: new Date().toISOString().slice(0,10),
+  railOrWeld:"1",     // Rail
+  section:   "1",     // 60kg
+  railType:  "2",     // 90 UTS
+  rollingMark: "SAIL 2021 E",
+  hotStamping: "60E1-MUM-21-048",
+  monthYearLaid: "03/2021",
+  suffix:    "P",
+  yearsService: "5",
+  sleeperType: "1",   // PRC
+  fittings:  "1",     // Elastic
+  sleeperDensity: "1",// 1660
+  ballastCushion: "350",
+  lastClassification: "4",  // OBS
+  uicCode:   "111-1.2",
+  origin:    "1",     // Head
+  usfdType:  "1",     // Need-based
+  lastUsfdRail: "04/2026",
+  trackRegime: "CWR",
+  lastDestressDate: "2024-11-14",
+  destressTemp: "38",
+  wtAgency:  "",
+  fbwPlant:  "",
+  fbwPanel:  "",
+  fbwJoint:  "",
+};
+
+/* ─── FIELD COMPONENT ─────────────────────────────────────────── */
+function F({ label, code, pre, usr, children }) {
+  return (
+    <div className="field-wrap">
+      <div className="field-label">
+        {label}
+        {code && <span className="field-code">[{code}]</span>}
+        {pre && <span className="field-pre">● pre-filled</span>}
+        {usr && <span className="field-usr">✎ required</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function LockedInput({ value, mono }) {
+  return <input className={`input locked${mono?" mono":""}`} value={value} disabled readOnly />;
+}
+
+function UserSelect({ value, onChange, options, userField }) {
+  return (
+    <select className={`input${userField?" user-field":""}`} value={value} onChange={e=>onChange(e.target.value)}>
+      <option value="">— Select —</option>
+      {options.map(([v,l])=><option key={v} value={v}>{v} — {l}</option>)}
+    </select>
+  );
+}
+
+function UserInput({ value, onChange, mono, placeholder, type="text" }) {
+  return <input className={`input user-field${mono?" mono":""}`} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} type={type} />;
+}
+
+/* ─── SECTION WRAPPER ─────────────────────────────────────────── */
+function Sec({ num, title, hi, children, defaultOpen=true }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="section-card">
+      <div className="sec-head" onClick={()=>setOpen(o=>!o)}>
+        <span style={{ fontFamily:"var(--mono)", fontSize:"11px", fontWeight:700, color:"#FF7A1A", width:"18px" }}>{num}</span>
+        <span style={{ fontSize:"10px", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", color:"#506070" }}>{title}</span>
+        {hi && <span style={{ fontSize:"9px", color:"#C0CACE" }}>{hi}</span>}
+        <span style={{ marginLeft:"auto", fontSize:"11px", color:"#B0BACA" }}>{open?"▴":"▾"}</span>
+      </div>
+      {open && <div className="sec-body">{children}</div>}
+    </div>
+  );
+}
+
+/* ─── VALIDATION ──────────────────────────────────────────────── */
+function validate(f) {
+  const errs = {};
+  if (!f.failureType)    errs.failureType   = "Required";
+  if (!f.failureDate)    errs.failureDate   = "Required";
+  if (f.failureType==="1" && !f.gapMm) errs.gapMm = "Required for fracture";
+  if (!f.flawDetected)  errs.flawDetected  = "Required";
+  if (!f.causeCode)     errs.causeCode     = "Required";
+  if (!f.avoidable)     errs.avoidable     = "Required";
+  if (!f.locationCode)  errs.locationCode  = "Required";
+  return errs;
+}
+
+/* ─── MAIN APP ────────────────────────────────────────────────── */
+function App() {
+  const [PF, setPF] = useState(PREFILL);
+  const [apiLoaded, setApiLoaded] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const key = params.get("key");
+    if (!key) return;
+    api("/api/annexure3?key=" + encodeURIComponent(key)).then(d => {
+      setPF(prev => ({
+        ...prev,
+        refNo: "ANN3/" + (d.railway||"RLY").replace(/ Railway/i,"").toUpperCase() + "/2026/" + String(d.km||"00000").padStart(5,"0"),
+        km: `${String(d.km||0).padStart(5,"0")}+${d.meter||0}`,
+        division: d.railway || prev.division,
+        railSide: d.rail === "R" ? "1" : "2",
+        railOrWeld: (d.asset_type||"").includes("weld") ? "2" : "1",
+        lastClassification: d.classification || prev.lastClassification,
+        lastUsfdRail: d.last_insp_date || prev.lastUsfdRail,
+        uicCode: d.classification || "OBS",
+        dateToday: new Date().toISOString().slice(0,10),
+        _defectKey: key,
+        _railway: d.railway,
+        _section: d.section,
+        _latestAmp: d.latest_amp,
+        _triageLevel: d.triage_level,
+        _yrs_to_80: d.yrs_to_80,
+        _slaBreach: d.sla_breach,
+        _family: d.family,
+        _riskScore: d.risk_score,
+        _n_readings: d.n_readings,
+      }));
+      setApiLoaded(true);
+    }).catch(() => {});
+  }, []);
+
+  // USER fields (editable, amber-highlighted)
+  const [failureType, setFailureType]   = useState("");
+  const [failureDate, setFailureDate]   = useState(PF.dateToday);
+  const [gapMm, setGapMm]               = useState("");
+  const [rollingMark, setRollingMark]   = useState(PF.rollingMark);
+  const [hotStamping, setHotStamping]   = useState(PF.hotStamping);
+  const [monthYearLaid, setMonthYearLaid] = useState(PF.monthYearLaid);
+  const [flawDetected, setFlawDetected] = useState("");
+  const [causeCode, setCauseCode]       = useState("");
+  const [avoidable, setAvoidable]       = useState("");
+  const [locationCode, setLocationCode] = useState("");
+  // CWR conditional
+  const [destressDate, setDestressDate] = useState(PF.lastDestressDate);
+  const [destressTemp, setDestressTemp] = useState(PF.destressTemp);
+  // Bolt-hole conditional
+  const [oilDate, setOilDate]           = useState("");
+  const [boltsTight, setBoltsTight]     = useState("");
+  const [chamfered, setChamfered]       = useState("");
+  const [elongMm, setElongMm]           = useState("");
+
+  const [submitted, setSubmitted]       = useState(false);
+  const [showErrors, setShowErrors]     = useState(false);
+  const [savedDraft, setSavedDraft]     = useState(false);
+
+  const fields = { failureType, failureDate, gapMm, flawDetected, causeCode, avoidable, locationCode };
+  const errors = validate(fields);
+  const hasErrors = Object.keys(errors).length > 0;
+  const isBoltHole = PF.uicCode.startsWith("135") || PF.uicCode.startsWith("235");
+  const isAtWeld = PF.railOrWeld !== "1";
+
+  // Draft persistence
+  useEffect(() => {
+    const draft = { failureType, failureDate, gapMm, flawDetected, causeCode, avoidable, locationCode };
+    localStorage.setItem("pmt_annex3_draft", JSON.stringify(draft));
+  }, [failureType, failureDate, gapMm, flawDetected, causeCode, avoidable, locationCode]);
+
+  useEffect(() => {
+    try {
+      const d = JSON.parse(localStorage.getItem("pmt_annex3_draft")||"{}");
+      if (d.failureType) setFailureType(d.failureType);
+      if (d.failureDate) setFailureDate(d.failureDate);
+      if (d.gapMm)       setGapMm(d.gapMm);
+      if (d.flawDetected) setFlawDetected(d.flawDetected);
+      if (d.causeCode)   setCauseCode(d.causeCode);
+      if (d.avoidable)   setAvoidable(d.avoidable);
+      if (d.locationCode) setLocationCode(d.locationCode);
+    } catch(e) {}
+  }, []);
+
+  function handleSubmit() {
+    if (hasErrors) { setShowErrors(true); return; }
+    setSubmitted(true);
+    window.print();
+  }
+
+  function handleSaveDraft() {
+    setSavedDraft(true);
+    setTimeout(() => setSavedDraft(false), 2500);
+  }
+
+  function ErrMsg({ field }) {
+    if (!showErrors || !errors[field]) return null;
+    return <div style={{ fontSize:"9.5px", color:"#C8102E", marginTop:"3px" }}>⚠ {errors[field]}</div>;
+  }
+
+  return (
+    <div style={{ display:"flex", height:"100vh", background:"#F0F2F5", overflow:"hidden" }}>
+
+      {/* LEFT NAV */}
+      <nav className="no-print" style={{ width:"52px", flexShrink:0, background:"#0B1F3A", display:"flex", flexDirection:"column", alignItems:"center", gap:"2px" }}>
+        <div style={{ width:"52px", height:"52px", background:"#132D52", display:"flex", alignItems:"center", justifyContent:"center", borderBottom:"1px solid #1C3F6E", flexShrink:0 }}>
+          <img src="assets/aonami-white.png" alt="Aonami" style={{ width:"34px", height:"34px", objectFit:"contain", display:"block" }} />
+        </div>
+        {[{icon:"≡",label:"Queue"},{icon:"◈",label:"Map"},{icon:"∿",label:"Defect"},{icon:"⊞",label:"Cluster"},{icon:"↑",label:"Import"},{icon:"□",label:"Annex",active:true},{icon:"⊙",label:"Zone"}].map(({icon,label,active})=>(
+          <div key={label} title={label} style={{ width:"44px", height:"44px", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:"2px", background:active?"#1C3F6E":"transparent", borderRadius:"4px", cursor:"pointer", borderLeft:active?"2px solid #FF7A1A":"2px solid transparent" }}>
+            <span style={{ fontSize:"15px", color:active?"#FFFFFF":"#6B8BB0", lineHeight:1 }}>{icon}</span>
+            <span style={{ fontSize:"7.5px", color:active?"#FFFFFF":"#4A6480", letterSpacing:"0.05em", textTransform:"uppercase" }}>{label}</span>
+          </div>
+        ))}
+        <div style={{ marginTop:"auto", marginBottom:"8px" }}>
+          <div style={{ width:"28px", height:"28px", background:"#1C3F6E", borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"10px", fontWeight:700, color:"#FFFFFF" }}>RS</div>
+        </div>
+      </nav>
+
+      {/* MAIN */}
+      <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", minWidth:0 }}>
+
+        {/* TOP BAR */}
+        <header className="topbar no-print" style={{ height:"48px", background:"#FFFFFF", borderBottom:"1px solid #D8DCE3", display:"flex", alignItems:"center", padding:"0 18px", gap:"10px", flexShrink:0 }}>
+          <div>
+            <div style={{ fontSize:"13px", fontWeight:700, color:"#0B1F3A" }}>Aonami Echo</div>
+            <div style={{ fontSize:"9px", color:"#8A95A3" }}>एको</div>
+          </div>
+          <div style={{ width:"1px", height:"24px", background:"#E5E5E5" }} />
+          <div style={{ display:"flex", alignItems:"center", gap:"5px", fontSize:"11.5px" }}>
+            <a href="Priority Queue.html" style={{ color:"#8A95A3", textDecoration:"none" }}>Priority Queue</a>
+            <span style={{ color:"#C0C8D4" }}>›</span>
+            <a href={"Defect Detail.html" + (PF._defectKey ? "?key="+encodeURIComponent(PF._defectKey) : "")} style={{ color:"#8A95A3", textDecoration:"none" }}>Defect {PF.km}</a>
+            <span style={{ color:"#C0C8D4" }}>›</span>
+            <span style={{ color:"#0B1F3A", fontWeight:600 }}>Annexure III</span>
+          </div>
+          <div style={{ marginLeft:"auto", display:"flex", gap:"6px", alignItems:"center" }}>
+            <div style={{ fontSize:"9.5px", color:"#8A95A3", background:"#F8F9FB", border:"1px solid #E5E5E5", borderRadius:"3px", padding:"3px 8px", fontFamily:"var(--mono)" }}>{PF.refNo}</div>
+            <button onClick={handleSaveDraft} style={{ padding:"5px 10px", fontSize:"11px", background:"#FFFFFF", color:"#0B1F3A", border:"1px solid #C0C8D4", borderRadius:"3px", cursor:"pointer" }}>
+              {savedDraft ? "✓ Draft saved" : "Save draft"}
+            </button>
+            <button onClick={handleSubmit} style={{ padding:"5px 12px", fontSize:"11px", fontWeight:700, background: hasErrors&&showErrors?"#C8102E":"#0B1F3A", color:"#FFFFFF", border:"none", borderRadius:"3px", cursor:"pointer" }}>
+              Submit &amp; generate PDF
+            </button>
+            <div style={{ width:"1px", height:"20px", background:"#E5E5E5" }} />
+            <img src="assets/ir-emblem.svg" alt="IR" style={{ width:"24px", height:"24px", objectFit:"contain", opacity:0.8 }} />
+          </div>
+        </header>
+
+        {/* FORM BODY */}
+        <div style={{ flex:1, overflowY:"auto", padding:"16px 20px" }}>
+          <div className="print-form" style={{ maxWidth:"820px", margin:"0 auto" }}>
+
+            {/* Model context banner — shows when loaded from API */}
+            {apiLoaded && (
+              <div style={{ background:"#F4F6FF", border:"1px solid #D0D8F0", borderRadius:"4px", padding:"10px 14px", marginBottom:"14px", display:"flex", gap:"20px", flexWrap:"wrap" }}>
+                <div style={{ fontSize:"9.5px", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", color:"#506070", width:"100%", marginBottom:"6px" }}>
+                  Aonami Echo — Model Context for this Defect
+                </div>
+                {[
+                  ["Railway", PF._railway],
+                  ["Section", PF._section],
+                  ["Latest %FSH", PF._latestAmp != null ? `${Number(PF._latestAmp).toFixed(1)}%` : "—"],
+                  ["Triage", PF._triageLevel],
+                  ["RUL → 80%FSH", PF._yrs_to_80 != null ? `${Number(PF._yrs_to_80).toFixed(1)} yr` : "Stable"],
+                  ["SLA breach", PF._slaBreach ? "YES ⚠" : "No"],
+                  ["Growth family", PF._family || "—"],
+                  ["Risk score", PF._riskScore != null ? `${(PF._riskScore*100).toFixed(0)}/100` : "—"],
+                  ["Readings", PF._n_readings],
+                ].map(([k,v])=>(
+                  <div key={k}>
+                    <div style={{ fontSize:"8.5px", color:"#8A95A3", marginBottom:"2px" }}>{k}</div>
+                    <div style={{ fontFamily:"var(--mono)", fontSize:"11px", fontWeight:600, color: k==="SLA breach"&&String(v).includes("YES")?"#C8102E":k==="Triage"&&String(v)==="IMMEDIATE"?"#C8102E":"#0B1F3A" }}>{v||"—"}</div>
+                  </div>
+                ))}
+                <div style={{ width:"100%", fontSize:"9px", color:"#8A95A3", marginTop:"4px" }}>
+                  Pre-filled fields below are from the Aonami Echo model. User-required fields (amber) must be completed before submission.
+                </div>
+              </div>
+            )}
+
+            {/* Print-only form header */}
+            <div className="print-form-header" style={{ marginBottom:"16px", paddingBottom:"12px", borderBottom:"2px solid #000" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                <div>
+                  <div style={{ fontFamily:"serif", fontSize:"13px", fontWeight:"bold" }}>Government of India &nbsp;·&nbsp; Ministry of Railways &nbsp;·&nbsp; Indian Railways</div>
+                  <div style={{ fontFamily:"serif", fontSize:"16px", fontWeight:"bold", marginTop:"4px" }}>ANNEXURE III</div>
+                  <div style={{ fontFamily:"serif", fontSize:"12px" }}>Rail / Weld Replacement Reporting Proforma</div>
+                  <div style={{ fontFamily:"serif", fontSize:"11px", marginTop:"2px" }}>रेल / वेल्ड प्रतिस्थापन रिपोर्ट प्रपत्र</div>
+                  <div style={{ fontFamily:"var(--mono)", fontSize:"10px", marginTop:"6px" }}>Ref: {PF.refNo} &nbsp;·&nbsp; KM & TP: {PF.km} &nbsp;·&nbsp; {PF.division}</div>
+                </div>
+                <img src="assets/ir-emblem.svg" alt="IR" style={{ width:"56px", height:"56px", objectFit:"contain" }} />
+              </div>
+            </div>
+
+            {/* Screen header */}
+            <div className="no-print" style={{ marginBottom:"12px" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                <div>
+                  <div style={{ fontSize:"10px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.07em" }}>Annexure III · रेल/वेल्ड प्रतिस्थापन रिपोर्ट</div>
+                  <div style={{ fontSize:"18px", fontWeight:700, color:"#0B1F3A", marginTop:"2px" }}>Rail/Weld Replacement Report</div>
+                  <div style={{ fontFamily:"var(--mono)", fontSize:"11px", color:"#506070", marginTop:"2px" }}>KM {PF.km} &nbsp;·&nbsp; {PF.division} &nbsp;·&nbsp; Ref: {PF.refNo}</div>
+                </div>
+              </div>
+              {/* Legend */}
+              <div style={{ marginTop:"8px", display:"flex", gap:"12px", fontSize:"10px", color:"#5A6475" }}>
+                <span style={{ display:"flex", alignItems:"center", gap:"4px" }}><span style={{ width:"8px", height:"8px", background:"#1F7A4D", borderRadius:"50%", display:"inline-block" }} />Pre-filled from system</span>
+                <span style={{ display:"flex", alignItems:"center", gap:"4px" }}><span style={{ width:"8px", height:"8px", background:"#E5A100", borderRadius:"50%", display:"inline-block" }} />Required input</span>
+              </div>
+            </div>
+
+            {/* Validation summary */}
+            {showErrors && hasErrors && (
+              <div style={{ padding:"10px 14px", background:"#FFF0F2", border:"1px solid #F0B0B8", borderRadius:"3px", marginBottom:"12px", fontSize:"11px", color:"#C8102E" }}>
+                <strong>{Object.keys(errors).length} required fields missing.</strong> Complete all amber fields before submitting.
+              </div>
+            )}
+
+            {/* ─── SECTION 1: LOCATION ─────────────────────────────── */}
+            <Sec num="1" title="Location" hi="स्थान">
+              <div className="sec-grid">
+                <F label="SE/JE Station code" code="1.1" pre><LockedInput value={PF.sejeCode} mono /></F>
+                <F label="Block section" code="1.2" pre><LockedInput value={PF.blockSection} /></F>
+                <F label="Line" code="1.3" pre>
+                  <LockedInput value={`${PF.line} — ${PF.line==="1"?"UP":PF.line==="2"?"DOWN":"Single"}`} />
+                </F>
+                <F label="Gauge" code="1.4" pre>
+                  <LockedInput value={`${PF.gauge} — ${PF.gauge==="1"?"BG (Broad Gauge)":"Other"}`} />
+                </F>
+                <F label="Rail no. / Weld no. within TP" code="1.5" pre><LockedInput value={PF.railNo} mono /></F>
+                <F label="Rail side" code="1.6" pre>
+                  <LockedInput value={`${PF.railSide} — ${PF.railSide==="1"?"RH (Right Hand)":"LH (Left Hand)"}`} />
+                </F>
+                <F label="KM & TP (8 digits)" code="1.7" pre><LockedInput value={PF.km} mono /></F>
+                <F label="Straight / Curve" code="1.8" pre>
+                  <LockedInput value={PF.curve === "S" ? "Straight" : `Curve — ${PF.curve}`} />
+                </F>
+                {PF.curve !== "S" && (
+                  <F label="Inner / Outer (if curve)" code="1.9" pre>
+                    <LockedInput value={`${PF.curvePos} — ${PF.curvePos==="1"?"Inner":"Outer"}`} />
+                  </F>
+                )}
+              </div>
+            </Sec>
+
+            {/* ─── SECTION 2: TRAFFIC & FAILURE ─────────────────────── */}
+            <Sec num="2" title="Traffic & Failure" hi="यातायात और विफलता">
+              <div className="sec-grid">
+                <F label="GMT total band" code="2.1" pre>
+                  <LockedInput value={`${PF.gmtBand} — 51–100 GMT`} mono />
+                </F>
+                <F label="Type of failure" code="2.2" usr>
+                  <UserSelect value={failureType} onChange={setFailureType} userField options={[["1","Fracture"],["2","Removal on USFD detection"]]} />
+                  <ErrMsg field="failureType" />
+                </F>
+                <F label="Date of fracture / removal" code="2.3" usr>
+                  <UserInput value={failureDate} onChange={setFailureDate} type="date" />
+                  <ErrMsg field="failureDate" />
+                </F>
+                {failureType === "1" && (
+                  <F label="Gap at fracture (mm)" code="2.4" usr>
+                    <UserInput value={gapMm} onChange={setGapMm} mono placeholder="e.g. 12" />
+                    <ErrMsg field="gapMm" />
+                  </F>
+                )}
+              </div>
+            </Sec>
+
+            {/* ─── SECTION 3: RAIL/WELD IDENTIFICATION ───────────────── */}
+            <Sec num="3" title="Rail / Weld identification" hi="रेल/वेल्ड पहचान">
+              <div className="sec-grid">
+                <F label="Rail / AT / FB / GP weld" code="3.1" pre>
+                  <LockedInput value={`${PF.railOrWeld} — ${PF.railOrWeld==="1"?"Rail":"AT Weld"}`} />
+                </F>
+                <F label="Section" code="3.2" pre>
+                  <LockedInput value={`${PF.section} — ${PF.section==="1"?"60 kg":"52 kg"}`} />
+                </F>
+                <F label="Rail type" code="3.3" pre>
+                  <LockedInput value={`${PF.railType} — ${PF.railType==="1"?"72 UTS":PF.railType==="2"?"90 UTS":"Head Hardened"}`} />
+                </F>
+                <F label="Rolling mark" code="3.4" pre>
+                  <input className="input" value={rollingMark} onChange={e=>setRollingMark(e.target.value)} />
+                </F>
+                <F label="Hot stamping / cast number" code="3.5" pre>
+                  <input className="input mono" value={hotStamping} onChange={e=>setHotStamping(e.target.value)} />
+                </F>
+                <F label="Month / year laid (P/S)" code="3.6" pre>
+                  <div style={{ display:"flex", gap:"6px" }}>
+                    <input className="input mono" value={monthYearLaid} onChange={e=>setMonthYearLaid(e.target.value)} placeholder="MM/YYYY" style={{ flex:1 }} />
+                    <select className="input" defaultValue={PF.suffix} style={{ width:"70px" }}>
+                      <option value="P">P</option><option value="S">S</option>
+                    </select>
+                  </div>
+                </F>
+                <F label="Years in service (auto-calc)" code="3.7" pre>
+                  <LockedInput value={PF.yearsService} mono />
+                </F>
+              </div>
+            </Sec>
+
+            {/* ─── SECTION 4: TRACK CONSTRUCTION ─────────────────────── */}
+            <Sec num="4" title="Track construction" hi="ट्रैक निर्माण">
+              <div className="sec-grid">
+                <F label="Sleeper type" code="4.1" pre>
+                  <LockedInput value={`${PF.sleeperType} — PRC`} />
+                </F>
+                <F label="Fittings" code="4.2" pre>
+                  <LockedInput value={`${PF.fittings} — Elastic (ERC Mk-IV)`} />
+                </F>
+                <F label="Sleeper density" code="4.3" pre>
+                  <LockedInput value={`${PF.sleeperDensity} — 1660/km`} />
+                </F>
+                <F label="Ballast cushion (mm)" code="4.4" pre>
+                  <LockedInput value={`${PF.ballastCushion} mm`} mono />
+                </F>
+              </div>
+            </Sec>
+
+            {/* ─── SECTION 5: AT WELD SPECIFICS (conditional) ─────────── */}
+            {isAtWeld && (
+              <Sec num="5" title="AT weld specifics" hi="AT वेल्ड विवरण">
+                <div className="sec-grid">
+                  <F label="AT weld agency" code="5.1" pre>
+                    <LockedInput value={PF.wtAgency || "—"} />
+                  </F>
+                  <F label="Type of AT weld" code="5.2" pre>
+                    <LockedInput value="1 — Conventional" />
+                  </F>
+                  <F label="Failure within 2 years" code="5.3" pre>
+                    <LockedInput value="N — No (5 years service)" />
+                  </F>
+                </div>
+              </Sec>
+            )}
+
+            {/* ─── SECTION 6: USFD HISTORY ─────────────────────────────── */}
+            <Sec num="6" title="USFD history" hi="यूएसएफडी इतिहास">
+              <div className="sec-grid">
+                <F label="Last classification" code="6.1" pre>
+                  <LockedInput value={`${PF.lastClassification} — OBS (Observed)`} />
+                </F>
+                <F label="Flaw detected / undetected" code="6.2" usr>
+                  <UserSelect value={flawDetected} onChange={setFlawDetected} userField options={[["1","Rail — detected by USFD"],["2","Rail — undetected by USFD"],["3","Weld — detected"],["4","Weld — undetected"]]} />
+                  <ErrMsg field="flawDetected" />
+                </F>
+                <F label="Cause of fracture / removal" code="6.3" usr>
+                  <UserSelect value={causeCode} onChange={setCauseCode} userField options={[
+                    ["R01","Transverse defect progressive — fatigue"],
+                    ["R02","Horizontal split head"],
+                    ["R03","Vertical longitudinal split"],
+                    ["R04","Bolt-hole crack (progressive)"],
+                    ["R05","Wear + corrosion"],
+                    ["R06","Shelling + spalling"],
+                    ["R07","Head check / GCC progressive"],
+                    ["R08","Manufacturing defect"],
+                    ["R09","Weld failure"],
+                    ["R10","Mechanical damage"],
+                    ["R99","Other — specify in Annexure IV"],
+                  ]} />
+                  <ErrMsg field="causeCode" />
+                </F>
+                <F label="UIC fracture codification" code="6.4" pre>
+                  <LockedInput value={PF.uicCode} mono />
+                </F>
+                <F label="Origin" code="6.5" pre>
+                  <LockedInput value={`${PF.origin} — Head`} />
+                </F>
+                <F label="Avoidable / unavoidable" code="6.6" usr>
+                  <UserSelect value={avoidable} onChange={setAvoidable} userField options={[["1","Avoidable"],["2","Unavoidable"]]} />
+                  <ErrMsg field="avoidable" />
+                </F>
+                <F label="USFD inspection type" code="6.7" pre>
+                  <LockedInput value={`${PF.usfdType} — Need-based`} />
+                </F>
+                <F label="Last USFD — rail (MM/YYYY)" code="6.8" pre>
+                  <LockedInput value={PF.lastUsfdRail} mono />
+                </F>
+              </div>
+            </Sec>
+
+            {/* ─── SECTION 7: CONDITIONAL SUB-FORMS ─────────────────────── */}
+            {PF.trackRegime === "CWR" && (
+              <Sec num="7a" title="CWR / LWR regime" hi="सीडब्ल्यूआर">
+                <div className="sec-grid">
+                  <F label="Date of last destressing" code="7a.1" pre>
+                    <input className="input" type="date" value={destressDate} onChange={e=>setDestressDate(e.target.value)} />
+                  </F>
+                  <F label="Destressing temperature (°C)" code="7a.2" pre>
+                    <input className="input mono" value={destressTemp} onChange={e=>setDestressTemp(e.target.value)} placeholder="°C" />
+                  </F>
+                </div>
+              </Sec>
+            )}
+
+            {isBoltHole && (
+              <Sec num="7b" title="Bolt-hole crack specifics" hi="बोल्ट-होल" defaultOpen={false}>
+                <div className="sec-grid">
+                  <F label="Date of last oiling / greasing" code="7b.1" usr>
+                    <UserInput value={oilDate} onChange={setOilDate} type="date" />
+                  </F>
+                  <F label="Bolts tight" code="7b.2" usr>
+                    <UserSelect value={boltsTight} onChange={setBoltsTight} userField options={[["Y","Yes"],["N","No"]]} />
+                  </F>
+                  <F label="Holes chamfered" code="7b.3" usr>
+                    <UserSelect value={chamfered} onChange={setChamfered} userField options={[["Y","Yes"],["N","No"]]} />
+                  </F>
+                  <F label="Elongation size (mm)" code="7b.4" usr>
+                    <UserInput value={elongMm} onChange={setElongMm} mono placeholder="mm" />
+                  </F>
+                </div>
+              </Sec>
+            )}
+
+            {/* ─── SECTION 8: LOCATION OF FRACTURE ─────────────────────── */}
+            <Sec num="8" title="Location of fracture / removal" hi="भंग स्थान">
+              <div className="sec-grid">
+                <F label="Location code" code="8.1" usr>
+                  <UserSelect value={locationCode} onChange={setLocationCode} userField options={[
+                    ["1","Fish-plated zone (bolt hole)"],
+                    ["2","Mid rail"],
+                    ["3","SEJ (Switch Expansion Joint)"],
+                    ["4","Glued joint"],
+                    ["5","Points & Crossings"],
+                  ]} />
+                  <ErrMsg field="locationCode" />
+                </F>
+              </div>
+            </Sec>
+
+            {/* ─── SIGNATURE BLOCK ─────────────────────────────────────── */}
+            <div className="section-card">
+              <div className="sec-body">
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"16px" }}>
+                  {[
+                    { role:"SE/JE (P.Way)", desc:"Reporting officer" },
+                    { role:"AEN (P.Way)", desc:"Countersigning officer" },
+                    { role:"Sr DEN / DEN", desc:"Sanctioning authority" },
+                  ].map((s,i) => (
+                    <div key={i} style={{ borderTop:"1px solid #1A1A1A", paddingTop:"8px" }}>
+                      <div style={{ fontSize:"9.5px", color:"#8A95A3", marginBottom:"2px" }}>{s.desc}</div>
+                      <div style={{ fontSize:"10.5px", fontWeight:600, color:"#0B1F3A" }}>{s.role}</div>
+                      <div style={{ marginTop:"24px", borderBottom:"1px solid #8A95A3", width:"80%" }} />
+                      <div style={{ fontSize:"9px", color:"#B0BACA", marginTop:"2px" }}>Signature &amp; Date</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop:"12px", fontSize:"9.5px", color:"#8A95A3", lineHeight:"1.5" }}>
+                  This proforma is in accordance with RDSO Para 13.1 / Annexure III. Submit original to Division office within 48 hours of fracture. Copy to PCE / RDSO Lucknow as applicable.
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom action bar */}
+            <div className="no-print" style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 0 20px" }}>
+              <div style={{ fontSize:"10.5px", color:"#8A95A3" }}>
+                <span style={{ color:"#E5A100", fontWeight:600 }}>{Object.keys(errors).length} amber fields</span> required to submit
+                &nbsp;·&nbsp; Draft auto-saved locally
+              </div>
+              <div style={{ display:"flex", gap:"8px" }}>
+                <button onClick={handleSaveDraft} style={{ padding:"8px 16px", fontSize:"11.5px", background:"#FFFFFF", color:"#0B1F3A", border:"1px solid #C0C8D4", borderRadius:"3px", cursor:"pointer" }}>
+                  {savedDraft ? "✓ Saved" : "Save draft"}
+                </button>
+                <button onClick={handleSubmit} style={{
+                  padding:"8px 20px", fontSize:"12px", fontWeight:700,
+                  background: hasErrors&&showErrors?"#C8102E":"#0B1F3A",
+                  color:"#FFFFFF", border:"none", borderRadius:"3px", cursor:"pointer",
+                }}>
+                  Submit &amp; generate PDF →
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        {/* FOOTER */}
+        <div className="no-print" style={{ padding:"6px 18px", borderTop:"1px solid #E5E5E5", background:"#F8F9FB", display:"flex", justifyContent:"space-between", alignItems:"center", flexShrink:0 }}>
+          <span style={{ fontSize:"9px", color:"#B0BACA" }}>© Government of India · Ministry of Railways · Indian Railways</span>
+          <span style={{ fontSize:"9px", color:"#B0BACA", fontFamily:"var(--mono)" }}>ANN3/{PF.km}/{new Date().toISOString().slice(0,10)}.pdf</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+<script src="prototype-nav.js"></script>
+</body>
+</html>

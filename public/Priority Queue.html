@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Aonami Echo — Priority Queue</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: 'IBM Plex Sans', sans-serif; background: #F0F2F5; color: #1A1A1A; font-size: 13px; }
+:root {
+  --navy: #0B1F3A; --navy-mid: #132D52; --navy-light: #1C3F6E;
+  --saffron: #FF7A1A;
+  --red: #C8102E; --amber: #E5A100; --green: #1F7A4D; --slate: #506070;
+  --bg: #F0F2F5; --surface: #FFFFFF; --border: #D8DCE3;
+  --text-primary: #1A1A1A; --text-secondary: #5A6475; --text-muted: #8A95A3;
+  --mono: 'IBM Plex Mono', monospace;
+}
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #C0C8D4; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useRef, useEffect, useCallback } = React;
+
+/* ─── UIC DESCRIPTIONS ─────────────────────────────────────────── */
+const UIC_DESC = {
+  "111":"Transverse defect (head)","211":"Transverse defect (foot)",
+  "112":"Horizontal split head","212":"Horizontal split foot",
+  "113":"Vertical longitudinal split","213":"Vertical long. split (foot)",
+  "135":"Bolt-hole crack","235":"Bolt-hole crack (foot)",
+  "DFWO":"Defective Weld Observed","DFWR":"Defective Weld Removable",
+  "DFWN":"Defective Weld New","IMRW":"Imm. Removal — Weld","OBSW":"Observed — Weld",
+};
+function uicBase(u) { return u ? u.split("-")[0] : u; }
+function uicDesc(u) { return UIC_DESC[uicBase(u)] || ""; }
+
+/* ─── API CONFIG ────────────────────────────────────────────────── */
+const API_BASE = window.location.origin;
+const api = (path) => fetch(API_BASE + path).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+
+// Kept for fallback / offline preview — replaced at runtime by API
+const MOCK_DEFECTS = [
+  {
+    id:"D001", km:"00482-12-04", uic:"111-1.2", type:"rail",
+    currentClass:"IMR", predictedClass:"IMR", slaStatus:"overdue",
+    sla24hFP:"overdue", sla3dReplace:"pending",
+    gmtToThreshold:0, gmtConsumed:14.2, lastInspDate:"12 Apr 2026",
+    route:"A", section:"60kg", grade:"90 UTS",
+    trackGeom:"C4°·O", activeSR:"30 kmph", probe:"70°CF",
+    evidence:{ runs:5, r2:0.94 },
+    cluster:{ id:"CL-01", span:3.2, defectCount:2 },
+    action:"Rail piece replacement — cluster span 3.2 m + 5.5 m; joggled FP in place (24hr overdue)",
+    wtAgency:null,
+    amplitudeData:[{gmt:9.2,fsh:28,probe:"70°CF"},{gmt:10.8,fsh:38,probe:"70°CF"},{gmt:12.1,fsh:52,probe:"70°CF"},{gmt:13.4,fsh:67,probe:"70°CF"},{gmt:14.2,fsh:81,probe:"70°CF"}],
+    calibRef:"70° probe, 12mm hole at 25mm depth"
+  },
+  {
+    id:"D002", km:"00917-04-02", uic:"211-1.2", type:"rail",
+    currentClass:"IMR", predictedClass:"IMR", slaStatus:"pending",
+    sla24hFP:"done", sla3dReplace:"pending",
+    gmtToThreshold:0, gmtConsumed:22.4, lastInspDate:"08 Apr 2026",
+    route:"A", section:"60kg", grade:"Head Hardened",
+    trackGeom:"—", activeSR:"30 kmph", probe:"70°CB",
+    evidence:{ runs:6, r2:0.91 },
+    cluster:null,
+    action:"Rail piece replacement — 0° back echo absent; speed restriction in force",
+    wtAgency:null,
+    amplitudeData:[{gmt:16.1,fsh:22,probe:"70°CB"},{gmt:17.9,fsh:34,probe:"70°CB"},{gmt:19.5,fsh:48,probe:"70°CB"},{gmt:21.1,fsh:63,probe:"70°CB"},{gmt:22.4,fsh:79,probe:"70°CB"}],
+    calibRef:"70° probe, 12mm hole at 25mm depth"
+  },
+  {
+    id:"D003", km:"01204-08-06", uic:"IMRW", type:"weld",
+    currentClass:"IMRW", predictedClass:"IMRW", slaStatus:"overdue",
+    sla24hFP:"overdue", sla3dReplace:"overdue",
+    gmtToThreshold:0, gmtConsumed:44.1, lastInspDate:"05 Apr 2026",
+    route:"A", section:"60kg", grade:"90 UTS",
+    trackGeom:"C2°·O", activeSR:null, probe:"37°CF",
+    evidence:{ runs:4, r2:0.88 },
+    cluster:null,
+    action:"IMMEDIATE weld removal — both 3-day and 24hr SLAs overdue. Place joggled FP.",
+    wtAgency:"TPP",
+    amplitudeData:[{gmt:38.4,fsh:35,probe:"37°CF"},{gmt:40.2,fsh:52,probe:"37°CF"},{gmt:42.0,fsh:68,probe:"37°CF"},{gmt:44.1,fsh:84,probe:"37°CF"}],
+    calibRef:"37° probe, 5mm FBH at 25mm depth"
+  },
+  {
+    id:"D004", km:"00671-05-08", uic:"113-2.1", type:"rail",
+    currentClass:"IMR", predictedClass:"IMR", slaStatus:"pending",
+    sla24hFP:"done", sla3dReplace:"overdue",
+    gmtToThreshold:0, gmtConsumed:31.7, lastInspDate:"03 Apr 2026",
+    route:"A", section:"60kg", grade:"90 UTS",
+    trackGeom:"—", activeSR:"30 kmph", probe:"0°",
+    evidence:{ runs:7, r2:0.96 },
+    cluster:{ id:"CL-02", span:1.8, defectCount:3 },
+    action:"Rail piece replacement — cluster of 3 within 1.8 m; 3-day SLA overdue",
+    wtAgency:null,
+    amplitudeData:[{gmt:24.0,fsh:30,probe:"0°"},{gmt:26.5,fsh:45,probe:"0°"},{gmt:28.8,fsh:60,probe:"0°"},{gmt:31.7,fsh:82,probe:"0°"}],
+    calibRef:"0° probe, 100% back-wall echo reference"
+  },
+  {
+    id:"D005", km:"01331-10-05", uic:"DFWR", type:"weld",
+    currentClass:"DFWR", predictedClass:"IMRW", slaStatus:null,
+    sla24hFP:null, sla3dReplace:null,
+    gmtToThreshold:1.4, gmtConsumed:44.1, lastInspDate:"05 Apr 2026",
+    route:"A", section:"60kg", grade:"90 UTS",
+    trackGeom:"C4°·O", activeSR:null, probe:"37°CF",
+    evidence:{ runs:4, r2:0.87 },
+    cluster:null,
+    action:"Plan weld removal before next inspection. GMT budget: 1.4 remaining.",
+    wtAgency:"ITC",
+    amplitudeData:[{gmt:38.0,fsh:18,probe:"37°CF"},{gmt:40.0,fsh:28,probe:"37°CF"},{gmt:42.2,fsh:41,probe:"37°CF"},{gmt:44.1,fsh:55,probe:"37°CF"}],
+    calibRef:"37° probe, 5mm FBH at 25mm depth"
+  },
+  {
+    id:"D006", km:"00543-15-01", uic:"113-1.3", type:"rail",
+    currentClass:"OBS", predictedClass:"IMR", slaStatus:null,
+    sla24hFP:null, sla3dReplace:null,
+    gmtToThreshold:2.2, gmtConsumed:24.6, lastInspDate:"06 Apr 2026",
+    route:"A", section:"60kg", grade:"90 UTS",
+    trackGeom:"C4°·O", activeSR:null, probe:"70°GF",
+    evidence:{ runs:5, r2:0.89 },
+    cluster:{ id:"CL-03", span:2.9, defectCount:2 },
+    action:"Dispatch joggled FP; plan replacement. Cluster span 2.9 m.",
+    wtAgency:null,
+    amplitudeData:[{gmt:18.0,fsh:14,probe:"70°GF"},{gmt:20.1,fsh:22,probe:"70°GF"},{gmt:22.3,fsh:33,probe:"70°GF"},{gmt:24.6,fsh:48,probe:"70°GF"}],
+    calibRef:"70° gauge-face probe, 5mm FBH"
+  },
+  {
+    id:"D007", km:"00289-16-07", uic:"111-3.2", type:"rail",
+    currentClass:"OBS", predictedClass:"IMR", slaStatus:null,
+    sla24hFP:null, sla3dReplace:null,
+    gmtToThreshold:2.4, gmtConsumed:57.8, lastInspDate:"07 Apr 2026",
+    route:"A", section:"60kg", grade:"Head Hardened",
+    trackGeom:"—", activeSR:null, probe:"70°CF",
+    evidence:{ runs:6, r2:0.92 },
+    cluster:{ id:"CL-03", span:2.9, defectCount:2 },
+    action:"Dispatch joggled FP; plan replacement. Cluster with D006.",
+    wtAgency:null,
+    amplitudeData:[{gmt:50.0,fsh:16,probe:"70°CF"},{gmt:52.5,fsh:25,probe:"70°CF"},{gmt:55.0,fsh:36,probe:"70°CF"},{gmt:57.8,fsh:51,probe:"70°CF"}],
+    calibRef:"70° probe, 12mm hole at 25mm depth"
+  },
+  {
+    id:"D008", km:"00482-12-06", uic:"112-1.1", type:"rail",
+    currentClass:"OBS", predictedClass:"IMR", slaStatus:null,
+    sla24hFP:null, sla3dReplace:null,
+    gmtToThreshold:1.8, gmtConsumed:14.2, lastInspDate:"12 Apr 2026",
+    route:"A", section:"60kg", grade:"90 UTS",
+    trackGeom:"C4°·O", activeSR:null, probe:"70°GF",
+    evidence:{ runs:5, r2:0.94 },
+    cluster:{ id:"CL-01", span:3.2, defectCount:2 },
+    action:"Cluster with D001 — included in rail piece replacement order.",
+    wtAgency:null,
+    amplitudeData:[{gmt:9.2,fsh:22,probe:"70°GF"},{gmt:10.8,fsh:32,probe:"70°GF"},{gmt:12.1,fsh:44,probe:"70°GF"},{gmt:13.4,fsh:57,probe:"70°GF"},{gmt:14.2,fsh:71,probe:"70°GF"}],
+    calibRef:"70° gauge-face probe, 5mm FBH"
+  },
+  {
+    id:"D009", km:"01089-14-03", uic:"135-4.2", type:"rail",
+    currentClass:"OBS", predictedClass:"IMR", slaStatus:null,
+    sla24hFP:null, sla3dReplace:null,
+    gmtToThreshold:3.2, gmtConsumed:18.3, lastInspDate:"10 Apr 2026",
+    route:"C", section:"60kg", grade:"90 UTS",
+    trackGeom:"C2°·I", activeSR:null, probe:"37°CB",
+    evidence:{ runs:3, r2:0.81 },
+    cluster:null,
+    action:"Joggled fish plate within 3 days. Probe escalation: 2 probes (37°CF+CB).",
+    wtAgency:null,
+    amplitudeData:[{gmt:12.0,fsh:18,probe:"37°CB"},{gmt:15.1,fsh:30,probe:"37°CB"},{gmt:18.3,fsh:46,probe:"37°CB"}],
+    calibRef:"37° probe, 5mm FBH at 25mm depth"
+  },
+  {
+    id:"D010", km:"00712-08-03", uic:"113-4.1", type:"rail",
+    currentClass:"OBS", predictedClass:"IMR", slaStatus:null,
+    sla24hFP:null, sla3dReplace:null,
+    gmtToThreshold:1.9, gmtConsumed:41.5, lastInspDate:"04 Apr 2026",
+    route:"A", section:"60kg", grade:"90 UTS",
+    trackGeom:"—", activeSR:null, probe:"70°NGF",
+    evidence:{ runs:5, r2:0.90 },
+    cluster:null,
+    action:"Dispatch joggled FP + plan replacement. Probe escalation active.",
+    wtAgency:null,
+    amplitudeData:[{gmt:33.0,fsh:20,probe:"70°NGF"},{gmt:36.0,fsh:31,probe:"70°NGF"},{gmt:38.8,fsh:44,probe:"70°NGF"},{gmt:41.5,fsh:61,probe:"70°NGF"}],
+    calibRef:"70° near-gauge-face probe, 5mm FBH"
+  },
+  {
+    id:"D011", km:"00398-09-04", uic:"135-2.1", type:"rail",
+    currentClass:"OBS", predictedClass:"IMR", slaStatus:null,
+    sla24hFP:null, sla3dReplace:null,
+    gmtToThreshold:2.9, gmtConsumed:19.7, lastInspDate:"09 Apr 2026",
+    route:"A", section:"60kg", grade:"90 UTS",
+    trackGeom:"C4°·O", activeSR:null, probe:"37°CF",
+    evidence:{ runs:4, r2:0.83 },
+    cluster:null,
+    action:"Joggled fish plate within 3 days.",
+    wtAgency:null,
+    amplitudeData:[{gmt:12.0,fsh:12,probe:"37°CF"},{gmt:14.5,fsh:20,probe:"37°CF"},{gmt:17.0,fsh:31,probe:"37°CF"},{gmt:19.7,fsh:46,probe:"37°CF"}],
+    calibRef:"37° probe, 5mm FBH at 25mm depth"
+  },
+  {
+    id:"D012", km:"00892-02-07", uic:"212-1.2", type:"rail",
+    currentClass:"OBS", predictedClass:"IMR", slaStatus:null,
+    sla24hFP:null, sla3dReplace:null,
+    gmtToThreshold:3.5, gmtConsumed:16.4, lastInspDate:"13 Apr 2026",
+    route:"B", section:"52kg", grade:"72 UTS",
+    trackGeom:"—", activeSR:null, probe:"70°CB",
+    evidence:{ runs:3, r2:0.79 },
+    cluster:null,
+    action:"Joggled fish plate within 3 days.",
+    wtAgency:null,
+    amplitudeData:[{gmt:10.0,fsh:15,probe:"70°CB"},{gmt:13.0,fsh:24,probe:"70°CB"},{gmt:16.4,fsh:38,probe:"70°CB"}],
+    calibRef:"70° probe, 12mm hole at 25mm depth"
+  },
+  {
+    id:"D013", km:"00789-14-04", uic:"211-3.3", type:"rail",
+    currentClass:"OBS", predictedClass:"IMR", slaStatus:null,
+    sla24hFP:null, sla3dReplace:null,
+    gmtToThreshold:3.1, gmtConsumed:21.1, lastInspDate:"11 Apr 2026",
+    route:"B", section:"60kg", grade:"90 UTS",
+    trackGeom:"—", activeSR:null, probe:"70°CF",
+    evidence:{ runs:4, r2:0.82 },
+    cluster:null,
+    action:"Joggled fish plate within 3 days. Probe escalation: 70°CF+CB both flagging.",
+    wtAgency:null,
+    amplitudeData:[{gmt:14.0,fsh:14,probe:"70°CF"},{gmt:16.5,fsh:22,probe:"70°CF"},{gmt:19.0,fsh:34,probe:"70°CF"},{gmt:21.1,fsh:48,probe:"70°CF"}],
+    calibRef:"70° probe, 12mm hole at 25mm depth"
+  },
+  {
+    id:"D014", km:"00456-07-09", uic:"111-2.4", type:"rail",
+    currentClass:"OBS", predictedClass:"IMR", slaStatus:null,
+    sla24hFP:null, sla3dReplace:null,
+    gmtToThreshold:2.3, gmtConsumed:33.9, lastInspDate:"07 Apr 2026",
+    route:"A", section:"60kg", grade:"90 UTS",
+    trackGeom:"C4°·O", activeSR:null, probe:"70°GF",
+    evidence:{ runs:5, r2:0.87 },
+    cluster:null,
+    action:"Dispatch joggled FP + plan replacement.",
+    wtAgency:null,
+    amplitudeData:[{gmt:26.0,fsh:17,probe:"70°GF"},{gmt:28.5,fsh:26,probe:"70°GF"},{gmt:31.0,fsh:38,probe:"70°GF"},{gmt:33.9,fsh:53,probe:"70°GF"}],
+    calibRef:"70° gauge-face probe, 5mm FBH"
+  },
+  {
+    id:"D015", km:"01567-09-02", uic:"DFWR", type:"weld",
+    currentClass:"OBSW", predictedClass:"DFWR", slaStatus:null,
+    sla24hFP:null, sla3dReplace:null,
+    gmtToThreshold:4.5, gmtConsumed:17.8, lastInspDate:"10 Apr 2026",
+    route:"B", section:"60kg", grade:"90 UTS",
+    trackGeom:"—", activeSR:null, probe:"37°CF",
+    evidence:{ runs:3, r2:0.76 },
+    cluster:null,
+    action:"Increased monitoring. Plan weld replacement within 2 inspection cycles.",
+    wtAgency:"HTI",
+    amplitudeData:[{gmt:10.0,fsh:14,probe:"37°CF"},{gmt:13.8,fsh:22,probe:"37°CF"},{gmt:17.8,fsh:34,probe:"37°CF"}],
+    calibRef:"37° probe, 5mm FBH at 25mm depth"
+  },
+  {
+    id:"D016", km:"01562-01-02", uic:"DFWO", type:"weld",
+    currentClass:"DFWO", predictedClass:"DFWR", slaStatus:null,
+    sla24hFP:null, sla3dReplace:null,
+    gmtToThreshold:4.1, gmtConsumed:28.5, lastInspDate:"11 Apr 2026",
+    route:"B", section:"60kg", grade:"90 UTS",
+    trackGeom:"C2°·I", activeSR:null, probe:"37°CB",
+    evidence:{ runs:4, r2:0.80 },
+    cluster:null,
+    action:"Increased monitoring interval. Plan weld replacement.",
+    wtAgency:"ITC",
+    amplitudeData:[{gmt:18.0,fsh:10,probe:"37°CB"},{gmt:21.5,fsh:16,probe:"37°CB"},{gmt:25.0,fsh:24,probe:"37°CB"},{gmt:28.5,fsh:34,probe:"37°CB"}],
+    calibRef:"37° probe, 5mm FBH at 25mm depth"
+  },
+  {
+    id:"D017", km:"01123-13-02", uic:"111-4.1", type:"rail",
+    currentClass:"GCC", predictedClass:"OBS", slaStatus:null,
+    sla24hFP:null, sla3dReplace:null,
+    gmtToThreshold:5.1, gmtConsumed:11.8, lastInspDate:"16 Apr 2026",
+    route:"C", section:"60kg", grade:"90 UTS",
+    trackGeom:"C4°·O", activeSR:null, probe:"70°GF",
+    evidence:{ runs:3, r2:0.71 },
+    cluster:null,
+    action:"GCC monitoring. Check gauge face wear at next run.",
+    wtAgency:null,
+    amplitudeData:[{gmt:5.0,fsh:8,probe:"70°GF"},{gmt:8.0,fsh:14,probe:"70°GF"},{gmt:11.8,fsh:22,probe:"70°GF"}],
+    calibRef:"70° gauge-face probe, 5mm FBH"
+  },
+  {
+    id:"D018", km:"00925-04-05", uic:"135-3.1", type:"rail",
+    currentClass:"OBS", predictedClass:"OBS", slaStatus:null,
+    sla24hFP:null, sla3dReplace:null,
+    gmtToThreshold:8.2, gmtConsumed:15.2, lastInspDate:"12 Apr 2026",
+    route:"C", section:"60kg", grade:"90 UTS",
+    trackGeom:"C2°·O", activeSR:null, probe:"37°CF",
+    evidence:{ runs:3, r2:0.68 },
+    cluster:null,
+    action:"Monitor. Re-inspect at next scheduled run.",
+    wtAgency:null,
+    amplitudeData:[{gmt:7.0,fsh:10,probe:"37°CF"},{gmt:11.0,fsh:15,probe:"37°CF"},{gmt:15.2,fsh:21,probe:"37°CF"}],
+    calibRef:"37° probe, 5mm FBH at 25mm depth"
+  },
+  {
+    id:"D019", km:"01789-07-03", uic:"211-2.1", type:"rail",
+    currentClass:"OBS", predictedClass:"OBS", slaStatus:null,
+    sla24hFP:null, sla3dReplace:null,
+    gmtToThreshold:8.2, gmtConsumed:5.4, lastInspDate:"20 Apr 2026",
+    route:"D", section:"52kg", grade:"72 UTS",
+    trackGeom:"—", activeSR:null, probe:"70°CB",
+    evidence:{ runs:2, r2:null },
+    cluster:null,
+    action:"Monitor. Only 2 runs — provisional model. Re-inspect at next scheduled run.",
+    wtAgency:null,
+    amplitudeData:[{gmt:2.0,fsh:11,probe:"70°CB"},{gmt:5.4,fsh:16,probe:"70°CB"}],
+    calibRef:"70° probe, 12mm hole at 25mm depth"
+  },
+  {
+    id:"D020", km:"01445-08-05", uic:"135-1.3", type:"rail",
+    currentClass:"OBS", predictedClass:"OBS", slaStatus:null,
+    sla24hFP:null, sla3dReplace:null,
+    gmtToThreshold:7.4, gmtConsumed:8.3, lastInspDate:"19 Apr 2026",
+    route:"D", section:"52kg", grade:"72 UTS",
+    trackGeom:"—", activeSR:null, probe:"37°CB",
+    evidence:{ runs:2, r2:null },
+    cluster:null,
+    action:"Monitor. 2 runs only — provisional. Re-inspect next run.",
+    wtAgency:null,
+    amplitudeData:[{gmt:3.5,fsh:12,probe:"37°CB"},{gmt:8.3,fsh:18,probe:"37°CB"}],
+    calibRef:"37° probe, 5mm FBH at 25mm depth"
+  },
+  {
+    id:"D021", km:"01234-06-03", uic:"DFWN", type:"weld",
+    currentClass:"DFWN", predictedClass:"DFWO", slaStatus:null,
+    sla24hFP:null, sla3dReplace:null,
+    gmtToThreshold:9.2, gmtConsumed:3.2, lastInspDate:"22 Apr 2026",
+    route:"E", section:"60kg", grade:"90 UTS",
+    trackGeom:"—", activeSR:null, probe:"37°CF",
+    evidence:{ runs:2, r2:null },
+    cluster:null,
+    action:"New weld acceptance monitoring. Schedule 30-day recheck.",
+    wtAgency:"Morwel",
+    amplitudeData:[{gmt:1.0,fsh:8,probe:"37°CF"},{gmt:3.2,fsh:12,probe:"37°CF"}],
+    calibRef:"37° probe, 5mm FBH at 25mm depth"
+  },
+];
+
+/* ─── BUCKET LOGIC ──────────────────────────────────────────────── */
+// Uses triageLevel from API (IMMEDIATE/URGENT/MONITOR/ROUTINE)
+function getBucket(d) {
+  if (d.triageLevel === "IMMEDIATE") return "A";
+  if (d.triageLevel === "URGENT") return "B";
+  if (d.triageLevel === "MONITOR") return "C";
+  return "D";
+}
+
+// SLA sort priority within bucket A
+function slaPriority(d) {
+  if (d.sla24hFP === "overdue" || d.sla3dReplace === "overdue") return 0;
+  if (d.sla24hFP === "pending") return 1;
+  if (d.sla3dReplace === "pending") return 2;
+  return 3;
+}
+
+/* ─── CLUSTER GROUPING ──────────────────────────────────────────── */
+// Group defects by cluster id; cluster becomes single expandable row
+function groupClusters(defects) {
+  const clusterMap = {};
+  const singles = [];
+  defects.forEach(d => {
+    if (d.cluster) {
+      const cid = d.cluster.id;
+      if (!clusterMap[cid]) clusterMap[cid] = { isCluster:true, clusterId:cid, clusterSpan:d.cluster.span, defectCount:d.cluster.defectCount, children:[], representativeKm:d.km };
+      clusterMap[cid].children.push(d);
+      // Use the worst child for display
+      const worst = clusterMap[cid].children.sort((a,b) => a.gmtToThreshold - b.gmtToThreshold)[0];
+      clusterMap[cid] = { ...clusterMap[cid], ...worst, isCluster:true, clusterId:cid, clusterSpan:d.cluster.span, defectCount:d.cluster.defectCount, children:clusterMap[cid].children };
+    } else {
+      singles.push({ ...d, isCluster:false });
+    }
+  });
+  return [...singles, ...Object.values(clusterMap)];
+}
+
+/* ─── STATUS HELPERS ────────────────────────────────────────────── */
+function classStyle(cls) {
+  if (cls === "IMR" || cls === "IMRW") return { bg:"#FFF0F2", text:"#C8102E", border:"#C8102E" };
+  if (cls === "OBS" || cls === "OBSW" || cls === "DFWR") return { bg:"#FFF8E6", text:"#9A6600", border:"#E5A100" };
+  if (cls === "DFWO" || cls === "DFWN") return { bg:"#FFF8E6", text:"#9A6600", border:"#E5A100" };
+  if (cls === "GCC") return { bg:"#F0F4FF", text:"#3A5BC7", border:"#7092E0" };
+  return { bg:"#F0FAF5", text:"#1F7A4D", border:"#1F7A4D" };
+}
+function ClassBadge({ cls, small }) {
+  const s = classStyle(cls);
+  return <span style={{ display:"inline-block", fontFamily:"var(--mono)", fontSize: small ? "10px" : "11px", fontWeight:600, padding: small ? "1px 5px" : "2px 7px", borderRadius:"3px", letterSpacing:"0.03em", background:s.bg, color:s.text, border:`1px solid ${s.border}` }}>{cls}</span>;
+}
+
+/* ─── GROWTH CHART (%FSH) ───────────────────────────────────────── */
+function GrowthChart({ defect }) {
+  const data = defect.amplitudeData;
+  if (!data || data.length < 1) return null;
+  const W = 296, H = 170;
+  const PAD = { top:18, right:42, bottom:36, left:42 };
+  const cw = W - PAD.left - PAD.right;
+  const ch = H - PAD.top - PAD.bottom;
+  const maxY = 100, minY = 0;
+  const minX = data[0].gmt, maxX = data[data.length-1].gmt + (data[data.length-1].gmt - data[0].gmt) * 0.15;
+  const toX = (g) => PAD.left + ((g - minX) / (maxX - minX)) * cw;
+  const toY = (v) => PAD.top + ch - ((v - minY) / (maxY - minY)) * ch;
+
+  // RDSO amplitude thresholds
+  const thresholds = [
+    { fsh:30, label:"30%", note:"OBS trigger", color:"#E5A100" },
+    { fsh:60, label:"60%", note:"IMR trigger (Annex II-A)", color:"#C8102E" },
+    { fsh:80, label:"80%", note:"Immediate (para 6.2.3)", color:"#C8102E" },
+  ];
+
+  // Projected next point (simple linear extrapolation)
+  let projectedPt = null;
+  if (data.length >= 2) {
+    const last = data[data.length-1];
+    const prev = data[data.length-2];
+    const gmtStep = last.gmt - prev.gmt;
+    const growthRate = last.fsh - prev.fsh;
+    const projGmt = last.gmt + gmtStep;
+    const projFsh = Math.min(100, last.fsh + growthRate * 1.1);
+    projectedPt = { gmt: projGmt, fsh: projFsh, probe: last.probe };
+  }
+
+  // Confidence band (±12% on projected)
+  const bandPts = projectedPt ? [
+    `${toX(data[data.length-1].gmt)},${toY(data[data.length-1].fsh)}`,
+    `${toX(projectedPt.gmt)},${toY(Math.min(100, projectedPt.fsh * 1.12))}`,
+    `${toX(projectedPt.gmt)},${toY(projectedPt.fsh * 0.88)}`,
+    `${toX(data[data.length-1].gmt)},${toY(data[data.length-1].fsh)}`,
+  ].join(" ") : "";
+
+  const probeColors = { "70°CF":"#0B1F3A","70°CB":"#1C3F6E","70°GF":"#2A5A8E","70°GB":"#3A7AB0","70°NGF":"#4A9AD0","70°NGB":"#5ABAE8","37°CF":"#506070","37°CB":"#708090","0°":"#1A1A1A" };
+
+  return (
+    <svg width={W} height={H} style={{ display:"block" }}>
+      {/* Grid lines */}
+      {[0,20,40,60,80,100].map(v => (
+        <g key={v}>
+          <line x1={PAD.left} y1={toY(v)} x2={W-PAD.right} y2={toY(v)} stroke="#EEF0F3" strokeWidth="1" />
+          <text x={PAD.left-5} y={toY(v)+4} textAnchor="end" fontSize="9" fill="#8A95A3" fontFamily="IBM Plex Mono">{v}%</text>
+        </g>
+      ))}
+
+      {/* Threshold lines */}
+      {thresholds.map(t => t.fsh <= 100 && (
+        <g key={t.fsh}>
+          <line x1={PAD.left} y1={toY(t.fsh)} x2={W-PAD.right} y2={toY(t.fsh)} stroke={t.color} strokeWidth="1" strokeDasharray="5,3" opacity="0.7" />
+          <text x={W-PAD.right+3} y={toY(t.fsh)+4} fontSize="8" fill={t.color} fontFamily="IBM Plex Mono" fontWeight="600">{t.label}</text>
+        </g>
+      ))}
+
+      {/* Confidence band */}
+      {projectedPt && <polygon points={bandPts} fill="rgba(80,96,112,0.1)" />}
+
+      {/* Projected dashed line */}
+      {projectedPt && (
+        <line
+          x1={toX(data[data.length-1].gmt)} y1={toY(data[data.length-1].fsh)}
+          x2={toX(projectedPt.gmt)} y2={toY(projectedPt.fsh)}
+          stroke="#0B1F3A" strokeWidth="1.5" strokeDasharray="5,3"
+        />
+      )}
+
+      {/* Main line */}
+      {data.length > 1 && (
+        <polyline
+          points={data.map(p => `${toX(p.gmt)},${toY(p.fsh)}`).join(" ")}
+          fill="none" stroke="#0B1F3A" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"
+        />
+      )}
+
+      {/* Data points with probe labels */}
+      {data.map((p, i) => {
+        const cx = toX(p.gmt), cy = toY(p.fsh);
+        const pc = probeColors[p.probe] || "#0B1F3A";
+        return (
+          <g key={i}>
+            <circle cx={cx} cy={cy} r="3.5" fill={pc} stroke="#FFFFFF" strokeWidth="1.5" />
+            {(i === 0 || i === data.length-1) && (
+              <text x={cx} y={cy-7} textAnchor="middle" fontSize="7.5" fill={pc} fontFamily="IBM Plex Mono">{p.probe}</text>
+            )}
+          </g>
+        );
+      })}
+
+      {/* Projected point */}
+      {projectedPt && (
+        <circle cx={toX(projectedPt.gmt)} cy={toY(projectedPt.fsh)} r="3" fill="none" stroke="#506070" strokeWidth="1.5" strokeDasharray="2,2" />
+      )}
+
+      {/* X axis */}
+      <line x1={PAD.left} y1={H-PAD.bottom} x2={W-PAD.right} y2={H-PAD.bottom} stroke="#D8DCE3" strokeWidth="1" />
+      {data.map((p, i) => (i % Math.ceil(data.length/4) === 0 || i === data.length-1) && (
+        <text key={i} x={toX(p.gmt)} y={H-PAD.bottom+11} textAnchor="middle" fontSize="8.5" fill="#8A95A3" fontFamily="IBM Plex Mono">{p.gmt.toFixed(1)}</text>
+      ))}
+      <text x={PAD.left+cw/2} y={H-3} textAnchor="middle" fontSize="8" fill="#8A95A3" fontFamily="IBM Plex Sans">Cumulative GMT</text>
+
+      {/* Y axis label */}
+      <text x={10} y={PAD.top+ch/2} textAnchor="middle" fontSize="8" fill="#8A95A3" fontFamily="IBM Plex Sans" transform={`rotate(-90,10,${PAD.top+ch/2})`}>Amplitude (%FSH)</text>
+    </svg>
+  );
+}
+
+/* ─── SPARKLINE ─────────────────────────────────────────────────── */
+function Sparkline({ data, cls }) {
+  if (!data || data.length < 2) return null;
+  const W=64, H=22;
+  const vals = data.map(d=>d.fsh);
+  const max = Math.max(...vals, 60), min=0;
+  const pts = vals.map((v,i) => `${(i/(vals.length-1))*W},${H-((v-min)/(max-min))*H}`).join(" ");
+  const color = (cls==="IMR"||cls==="IMRW") ? "#C8102E" : (cls==="OBS"||cls==="OBSW"||cls==="DFWR") ? "#E5A100" : "#506070";
+  return (
+    <svg width={W} height={H} style={{display:"block",overflow:"visible"}}>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+      <circle cx={pts.split(" ").pop().split(",")[0]} cy={pts.split(" ").pop().split(",")[1]} r="2.5" fill={color} />
+    </svg>
+  );
+}
+
+/* ─── SIDE PANEL ────────────────────────────────────────────────── */
+function SidePanel({ defect, onClose, onExport }) {
+  if (!defect) return null;
+  return (
+    <div style={{ width:"360px", flexShrink:0, background:"#FFFFFF", borderLeft:"1px solid #D8DCE3", display:"flex", flexDirection:"column", height:"100%", overflowY:"auto" }}>
+      {/* Header */}
+      <div style={{ padding:"12px 14px 10px", borderBottom:"1px solid #EAECEF", display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+        <div>
+          <div style={{ fontFamily:"var(--mono)", fontSize:"15px", fontWeight:600, color:"#0B1F3A" }}>{defect.km}</div>
+          <div style={{ fontSize:"10.5px", color:"#5A6475", marginTop:"2px" }}>
+            <span style={{ fontFamily:"var(--mono)", fontWeight:500 }}>{defect.uic}</span> · {uicDesc(defect.uic)}
+            {defect.isCluster && <span style={{ marginLeft:"6px", fontSize:"9.5px", background:"#FFF0F2", color:"#C8102E", border:"1px solid #F0B0B8", borderRadius:"2px", padding:"1px 4px" }}>CLUSTER {defect.clusterId}</span>}
+          </div>
+        </div>
+        <button onClick={onClose} style={{ background:"none", border:"none", cursor:"pointer", color:"#8A95A3", fontSize:"18px", lineHeight:1 }}>×</button>
+      </div>
+
+      {/* Classification row */}
+      <div style={{ padding:"8px 14px", borderBottom:"1px solid #F0F0F0", display:"flex", gap:"16px", alignItems:"center" }}>
+        <div>
+          <div style={{ fontSize:"9px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:"3px" }}>Current</div>
+          <ClassBadge cls={defect.currentClass} />
+        </div>
+        <span style={{ color:"#C0C8D4", fontSize:"14px" }}>→</span>
+        <div>
+          <div style={{ fontSize:"9px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:"3px" }}>Predicted</div>
+          <ClassBadge cls={defect.predictedClass} />
+        </div>
+        <div style={{ marginLeft:"auto" }}>
+          <div style={{ fontSize:"9px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:"3px" }}>Evidence</div>
+          <div style={{ fontFamily:"var(--mono)", fontSize:"11px", fontWeight:600, color:"#0B1F3A" }}>
+            {defect.evidence.runs} runs{defect.evidence.r2 !== null ? `, R²=${defect.evidence.r2}` : " — provisional"}
+          </div>
+        </div>
+      </div>
+
+      {/* SLA row (IMR only) */}
+      {(defect.sla24hFP || defect.sla3dReplace) && (
+        <div style={{ padding:"8px 14px", borderBottom:"1px solid #F0F0F0", background:"#FFF8F8" }}>
+          <div style={{ fontSize:"9px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:"6px" }}>RDSO SLA Compliance</div>
+          <div style={{ display:"flex", gap:"10px" }}>
+            {defect.sla24hFP && (
+              <div style={{ flex:1, padding:"5px 8px", borderRadius:"3px", background: defect.sla24hFP==="overdue" ? "#FFF0F2" : defect.sla24hFP==="done" ? "#F0FAF5" : "#FFFBF0", border:`1px solid ${defect.sla24hFP==="overdue"?"#F0B0B8":defect.sla24hFP==="done"?"#A0D8BC":"#F0D890"}` }}>
+                <div style={{ fontSize:"8.5px", color:"#8A95A3", marginBottom:"2px" }}>24-hr Joggled FP</div>
+                <div style={{ fontSize:"10.5px", fontWeight:700, color: defect.sla24hFP==="overdue"?"#C8102E":defect.sla24hFP==="done"?"#1F7A4D":"#A37000" }}>
+                  {defect.sla24hFP==="overdue"?"OVERDUE":defect.sla24hFP==="done"?"DONE":"PENDING"}
+                </div>
+              </div>
+            )}
+            {defect.sla3dReplace && (
+              <div style={{ flex:1, padding:"5px 8px", borderRadius:"3px", background: defect.sla3dReplace==="overdue"?"#FFF0F2":defect.sla3dReplace==="done"?"#F0FAF5":"#FFFBF0", border:`1px solid ${defect.sla3dReplace==="overdue"?"#F0B0B8":defect.sla3dReplace==="done"?"#A0D8BC":"#F0D890"}` }}>
+                <div style={{ fontSize:"8.5px", color:"#8A95A3", marginBottom:"2px" }}>3-day Replacement</div>
+                <div style={{ fontSize:"10.5px", fontWeight:700, color: defect.sla3dReplace==="overdue"?"#C8102E":defect.sla3dReplace==="done"?"#1F7A4D":"#A37000" }}>
+                  {defect.sla3dReplace==="overdue"?"OVERDUE":defect.sla3dReplace==="done"?"DONE":"PENDING"}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Growth chart */}
+      <div style={{ padding:"10px 14px 6px" }}>
+        <div style={{ fontSize:"9.5px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:"6px" }}>
+          Amplitude vs GMT
+          <span style={{ marginLeft:"8px", fontWeight:400, textTransform:"none", fontSize:"9px", color:"#B0BACA", letterSpacing:0 }}>Ref: {defect.calibRef}</span>
+        </div>
+        <GrowthChart defect={defect} />
+        <div style={{ marginTop:"4px", display:"flex", gap:"10px" }}>
+          <span style={{ fontSize:"9px", color:"#5A6475", display:"flex", alignItems:"center", gap:"3px" }}>
+            <svg width="16" height="3"><line x1="0" y1="1.5" x2="16" y2="1.5" stroke="#0B1F3A" strokeWidth="2"/></svg>Measured
+          </span>
+          <span style={{ fontSize:"9px", color:"#5A6475", display:"flex", alignItems:"center", gap:"3px" }}>
+            <svg width="16" height="3"><line x1="0" y1="1.5" x2="16" y2="1.5" stroke="#0B1F3A" strokeWidth="1.5" strokeDasharray="4,2"/></svg>Projected
+          </span>
+          <span style={{ fontSize:"9px", color:"#5A6475", display:"flex", alignItems:"center", gap:"3px" }}>
+            <svg width="10" height="7"><rect x="0" y="0" width="10" height="7" fill="rgba(80,96,112,0.15)"/></svg>95% band
+          </span>
+        </div>
+      </div>
+
+      {/* GMT / cluster info */}
+      <div style={{ margin:"4px 14px 0", padding:"8px 10px", background:"#F8F9FB", border:"1px solid #E5E5E5", borderRadius:"3px" }}>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"6px" }}>
+          <div>
+            <div style={{ fontSize:"8.5px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.07em" }}>GMT consumed</div>
+            <div style={{ fontFamily:"var(--mono)", fontSize:"14px", fontWeight:700, color:"#0B1F3A" }}>{defect.gmtConsumed} <span style={{ fontSize:"9px", fontWeight:400 }}>GMT</span></div>
+            <div style={{ fontSize:"9.5px", color:"#8A95A3" }}>{defect.lastInspDate}</div>
+          </div>
+          <div>
+            <div style={{ fontSize:"8.5px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.07em" }}>GMT to threshold</div>
+            <div style={{ fontFamily:"var(--mono)", fontSize:"14px", fontWeight:700, color: defect.gmtToThreshold===0?"#C8102E":defect.gmtToThreshold<2.5?"#C8102E":defect.gmtToThreshold<5?"#A37000":"#1F7A4D" }}>
+              {defect.gmtToThreshold===0?"BREACHED":`${defect.gmtToThreshold} GMT`}
+            </div>
+          </div>
+        </div>
+        {defect.isCluster && (
+          <div style={{ marginTop:"6px", paddingTop:"6px", borderTop:"1px solid #E5E5E5", fontSize:"10px", color:"#C8102E" }}>
+            Cluster {defect.clusterId} · {defect.defectCount} defects · span {defect.clusterSpan} m · single replacement action
+          </div>
+        )}
+      </div>
+
+      {/* Metadata */}
+      <div style={{ padding:"8px 14px 0" }}>
+        <div style={{ fontSize:"9px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:"6px" }}>Track Metadata</div>
+        <table style={{ width:"100%", borderCollapse:"collapse" }}>
+          {[
+            ["Route / Section", `${defect.route} / ${defect.section}`],
+            ["Rail grade", defect.grade],
+            ["Track geometry", defect.trackGeom],
+            ["Detection probe", defect.probe],
+            ["Active SR", defect.activeSR || "None"],
+            ...(defect.type==="weld" && defect.wtAgency ? [["AT weld agency", defect.wtAgency]] : []),
+          ].map(([k,v]) => (
+            <tr key={k} style={{ borderBottom:"1px solid #F0F0F0" }}>
+              <td style={{ padding:"4px 0", fontSize:"10.5px", color:"#8A95A3", width:"110px" }}>{k}</td>
+              <td style={{ padding:"4px 0", fontSize:"10.5px", fontFamily:(k==="Detection probe"||k==="Route / Section")?"var(--mono)":"inherit", fontWeight:500, color: k==="Active SR"&&v!=="None"?"#C8102E":"#1A1A1A" }}>{v}</td>
+            </tr>
+          ))}
+        </table>
+      </div>
+
+      {/* Model outputs */}
+      {(defect.family || defect.riskScore != null) && (
+        <div style={{ padding:"8px 14px 0" }}>
+          <div style={{ fontSize:"9px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:"6px" }}>Growth Model</div>
+          <div style={{ background:"#F4F6FF", border:"1px solid #D0D8F0", borderRadius:"3px", padding:"7px 10px" }}>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"4px 12px" }}>
+              {defect.family && <div><span style={{ fontSize:"8.5px", color:"#8A95A3" }}>Family </span><span style={{ fontFamily:"var(--mono)", fontSize:"10px", fontWeight:600, color:"#0B1F3A" }}>{defect.family}</span></div>}
+              {defect.riskScore != null && <div><span style={{ fontSize:"8.5px", color:"#8A95A3" }}>Risk score </span><span style={{ fontFamily:"var(--mono)", fontSize:"10px", fontWeight:600, color: defect.riskScore>0.7?"#C8102E":defect.riskScore>0.4?"#E5A100":"#1F7A4D" }}>{(defect.riskScore*100).toFixed(0)}</span></div>}
+              {defect.famC != null && <div><span style={{ fontSize:"8.5px", color:"#8A95A3" }}>C (Paris) </span><span style={{ fontFamily:"var(--mono)", fontSize:"10px", color:"#506070" }}>{defect.famC.toExponential(2)}</span></div>}
+              {defect.famM != null && <div><span style={{ fontSize:"8.5px", color:"#8A95A3" }}>m (Paris) </span><span style={{ fontFamily:"var(--mono)", fontSize:"10px", color:"#506070" }}>{defect.famM.toFixed(2)}</span></div>}
+              {defect.ownSlope != null && <div><span style={{ fontSize:"8.5px", color:"#8A95A3" }}>Slope/GMT </span><span style={{ fontFamily:"var(--mono)", fontSize:"10px", fontWeight:600, color: defect.ownSlope>2?"#C8102E":defect.ownSlope>0.5?"#E5A100":"#1F7A4D" }}>{defect.ownSlope > 0 ? "+" : ""}{defect.ownSlope?.toFixed(2)} %FSH</span></div>}
+              {defect.yrs_to_80 != null && <div><span style={{ fontSize:"8.5px", color:"#8A95A3" }}>RUL→80% </span><span style={{ fontFamily:"var(--mono)", fontSize:"10px", fontWeight:600, color: defect.yrs_to_80<1?"#C8102E":defect.yrs_to_80<3?"#E5A100":"#1F7A4D" }}>{defect.yrs_to_80.toFixed(1)} yr</span></div>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recommended action */}
+      <div style={{ padding:"8px 14px 0" }}>
+        <div style={{ fontSize:"9px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:"4px" }}>Recommended Action</div>
+        <div style={{ fontSize:"11px", color:"#1A1A1A", lineHeight:"1.5", padding:"7px 9px", background:"#F8F9FB", border:"1px solid #E5E5E5", borderRadius:"3px" }}>{defect.action}</div>
+      </div>
+
+      {/* Cluster children (expandable) */}
+      {defect.isCluster && defect.children && (
+        <div style={{ margin:"6px 14px 0", padding:"6px 10px", background:"#FFF8F8", border:"1px solid #F0C0C8", borderRadius:"3px" }}>
+          <div style={{ fontSize:"9px", color:"#C8102E", textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:"4px" }}>Cluster component defects</div>
+          {defect.children.map(c => (
+            <div key={c.id} style={{ display:"flex", gap:"8px", alignItems:"center", padding:"3px 0", borderBottom:"1px solid #F5E0E3", fontSize:"10.5px" }}>
+              <span style={{ fontFamily:"var(--mono)", color:"#0B1F3A", fontWeight:500 }}>{c.km}</span>
+              <span style={{ fontFamily:"var(--mono)", fontSize:"10px", color:"#5A6475" }}>{c.uic}</span>
+              <ClassBadge cls={c.currentClass} small />
+              <span style={{ marginLeft:"auto", fontFamily:"var(--mono)", fontSize:"10px", color:"#8A95A3" }}>{c.probe}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Actions */}
+      <div style={{ padding:"10px 14px 14px", marginTop:"auto" }}>
+        <button onClick={() => onExport(defect)} style={{ width:"100%", padding:"8px 14px", background:"#0B1F3A", color:"#FFFFFF", border:"none", borderRadius:"3px", fontSize:"11.5px", fontWeight:600, cursor:"pointer", marginBottom:"5px" }}>
+          Export Work Order (Annexure III)
+        </button>
+        <button onClick={() => window.location.href = "Defect Detail.html?key=" + encodeURIComponent(defect.defect_key || defect.id)}
+          style={{ width:"100%", padding:"8px 14px", background:"#FFFFFF", color:"#0B1F3A", border:"1px solid #C0C8D4", borderRadius:"3px", fontSize:"11.5px", fontWeight:500, cursor:"pointer" }}>
+          View Full Defect Detail →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── KPI TILE ──────────────────────────────────────────────────── */
+function KpiTile({ label, labelHi, value, sub, accent, mono }) {
+  return (
+    <div style={{ background:"#FFFFFF", border:"1px solid #D8DCE3", borderRadius:"4px", padding:"9px 12px", borderTop:`3px solid ${accent||"transparent"}`, minWidth:0 }}>
+      <div style={{ fontSize:"9px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.08em", lineHeight:1.2 }}>
+        {label}
+        {labelHi && <span style={{ display:"block", fontFamily:"sans-serif", fontSize:"8.5px", color:"#C0CACE", letterSpacing:0, textTransform:"none" }}>{labelHi}</span>}
+      </div>
+      <div style={{ fontFamily: mono ? "var(--mono)" : "IBM Plex Sans", fontSize:"20px", fontWeight:700, color:"#0B1F3A", marginTop:"3px", lineHeight:1 }}>{value}</div>
+      {sub && <div style={{ fontSize:"9.5px", color:"#8A95A3", marginTop:"3px" }}>{sub}</div>}
+    </div>
+  );
+}
+
+/* ─── BUCKET SECTION HEADER ─────────────────────────────────────── */
+function BucketHeader({ label, labelHi, count, accent, description, collapsed, onToggle }) {
+  return (
+    <tr style={{ background: accent+"12" }}>
+      <td colSpan={11} style={{ padding:"6px 12px", borderBottom:`1px solid ${accent}30`, borderTop:`2px solid ${accent}` }}>
+        <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+          <span style={{ width:"8px", height:"8px", borderRadius:"50%", background:accent, display:"inline-block", flexShrink:0 }} />
+          <span style={{ fontSize:"10.5px", fontWeight:700, color:accent, letterSpacing:"0.05em", textTransform:"uppercase" }}>{label}</span>
+          {labelHi && <span style={{ fontSize:"9px", color:"#B0BACA" }}>{labelHi}</span>}
+          <span style={{ fontFamily:"var(--mono)", fontSize:"10px", background:accent+"25", color:accent, padding:"1px 6px", borderRadius:"10px", fontWeight:600 }}>{count}</span>
+          <span style={{ fontSize:"10px", color:"#8A95A3", marginLeft:"4px" }}>{description}</span>
+          {onToggle && (
+            <button onClick={onToggle} style={{ marginLeft:"auto", fontSize:"10px", color:"#8A95A3", background:"none", border:"1px solid #D8DCE3", borderRadius:"3px", padding:"1px 8px", cursor:"pointer" }}>
+              {collapsed ? "Expand ▾" : "Collapse ▴"}
+            </button>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+/* ─── MAIN APP ──────────────────────────────────────────────────── */
+function App() {
+  const [hoveredId, setHoveredId] = useState(null);
+  const [selectedDefect, setSelectedDefect] = useState(null);
+  const [typeFilter, setTypeFilter] = useState("Both");
+  const [railwayFilter, setRailwayFilter] = useState("All");
+  const [levelFilter, setLevelFilter] = useState("All");
+  const [monitoredCollapsed, setMonitoredCollapsed] = useState(true);
+  const [exportMsg, setExportMsg] = useState(null);
+  const [tweaksVisible, setTweaksVisible] = useState(false);
+  // — API state —
+  const [defects, setDefects] = useState([]);
+  const [stats, setStats] = useState({});
+  const [railways, setRailways] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+    "density": "compact",
+    "showHindi": true,
+    "showWtAgency": true
+  }/*EDITMODE-END*/;
+
+  const _tw = useTweaks(TWEAK_DEFAULTS);
+  const tweaks = (_tw && _tw.tweaks) ? _tw.tweaks : TWEAK_DEFAULTS;
+  const setTweak = (_tw && _tw.setTweak) ? _tw.setTweak : () => {};
+
+  useEffect(() => {
+    const h = e => {
+      if (e.data?.type==="__activate_edit_mode") setTweaksVisible(true);
+      if (e.data?.type==="__deactivate_edit_mode") setTweaksVisible(false);
+    };
+    window.addEventListener("message", h);
+    window.parent.postMessage({ type:"__edit_mode_available" }, "*");
+    return () => window.removeEventListener("message", h);
+  }, []);
+
+  // ── Fetch data from API ──
+  useEffect(() => {
+    setLoading(true); setError(null);
+    const params = new URLSearchParams();
+    if (typeFilter !== "Both") params.set("asset", typeFilter);
+    if (railwayFilter !== "All") params.set("railway", railwayFilter);
+    if (levelFilter !== "All") params.set("level", levelFilter);
+    params.set("limit", "500");
+    Promise.all([
+      api("/api/stats"),
+      api("/api/queue?" + params.toString()),
+    ]).then(([st, q]) => {
+      setStats(st);
+      setDefects(q);
+      const rws = [...new Set(q.map(d => d.railway).filter(Boolean))].sort();
+      setRailways(rws);
+      setLoading(false);
+    }).catch(e => {
+      setError("API unavailable — showing offline preview");
+      setDefects(MOCK_DEFECTS);
+      setLoading(false);
+    });
+  }, [typeFilter, railwayFilter, levelFilter]);
+
+  // ── Filtering (client-side after fetch) ──
+  const filtered = defects; // server already filters; keep for cluster grouping
+
+  // Group clusters
+  const grouped = groupClusters(filtered);
+
+  // Bucket + sort
+  const bucketA = grouped.filter(d => getBucket(d) === "A").sort((a,b) => slaPriority(a) - slaPriority(b));
+  const bucketB = grouped.filter(d => getBucket(d) === "B").sort((a,b) => (a.gmtToThreshold||99) - (b.gmtToThreshold||99));
+  const bucketC = grouped.filter(d => getBucket(d) === "C").sort((a,b) => (a.gmtToThreshold||99) - (b.gmtToThreshold||99));
+  const bucketD = grouped.filter(d => getBucket(d) === "D").sort((a,b) => (a.gmtToThreshold||99) - (b.gmtToThreshold||99));
+
+  const rowH = tweaks.density === "compact" ? 32 : 40;
+  const panelDefect = selectedDefect || (hoveredId ? grouped.find(d => d.id === hoveredId) : null);
+
+  function handleRowClick(d) {
+    setSelectedDefect(prev => prev?.id === d.id ? null : d);
+  }
+  function handleViewDetail(d) {
+    window.location.href = "Defect Detail.html?key=" + encodeURIComponent(d.defect_key || d.id);
+  }
+  function handleExport(d) {
+    window.location.href = "Annexure III Form.html?key=" + encodeURIComponent(d.defect_key || d.id);
+  }
+
+  // KPI stats — use API stats when available
+  const imrActive = stats.by_level ? (stats.by_level["IMMEDIATE"] || 0) : defects.filter(d => d.currentClass==="IMR"||d.currentClass==="IMRW").length;
+  const slaOverdue = stats.sla_breaches || 0;
+  const obsEscalating = bucketB.length;
+
+  const thStyle = { padding:"0 8px 8px", fontSize:"9.5px", fontWeight:600, color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.07em", whiteSpace:"nowrap", borderBottom:"2px solid #E0E4EA", textAlign:"left", userSelect:"none" };
+
+  function TableRow({ d, idx, isHovered, isSelected, onHover, onLeave, onClick, onExport }) {
+    const isImr = d.currentClass==="IMR"||d.currentClass==="IMRW";
+    const rowBg = isSelected ? "#EEF3FA" : isHovered ? "#F4F7FC" : isImr ? "#FFF8F8" : "transparent";
+    const slaOverdueFlag = d.sla24hFP==="overdue"||d.sla3dReplace==="overdue";
+
+    return (
+      <tr style={{ height:`${rowH}px`, background:rowBg, borderBottom:"1px solid #EEF0F3", cursor:"pointer", transition:"background 0.08s" }}
+        onMouseEnter={onHover} onMouseLeave={onLeave} onClick={onClick}>
+        <td style={{ padding:"0 4px 0 10px", fontSize:"9.5px", color:"#C0C8D4", fontFamily:"var(--mono)", width:"28px" }}>{idx+1}</td>
+
+        {/* KM & TP */}
+        <td style={{ padding:"0 8px", width:"124px" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:"4px" }}>
+            {d.isCluster && <span title={`Cluster ${d.clusterId}: ${d.defectCount} defects within ${d.clusterSpan}m`} style={{ width:"7px", height:"7px", borderRadius:"50%", background:"#C8102E", flexShrink:0 }} />}
+            {slaOverdueFlag && <span title="SLA overdue" style={{ width:"6px", height:"6px", borderRadius:"1px", background:"#C8102E", flexShrink:0 }} />}
+            <span style={{ fontFamily:"var(--mono)", fontSize:"11px", fontWeight:500, color:"#0B1F3A" }}>{d.km}</span>
+          </div>
+          {d.isCluster && <div style={{ fontSize:"8.5px", color:"#C8102E", marginTop:"-1px" }}>×{d.defectCount} / {d.clusterSpan}m</div>}
+        </td>
+
+        {/* UIC */}
+        <td style={{ padding:"0 8px", width:"100px" }}>
+          <div style={{ fontFamily:"var(--mono)", fontSize:"11px", fontWeight:500 }}>{d.uic}</div>
+          <div style={{ fontSize:"8.5px", color:"#8A95A3", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:"90px" }}>{uicDesc(d.uic)}</div>
+        </td>
+
+        {/* Current class */}
+        <td style={{ padding:"0 8px", width:"72px" }}><ClassBadge cls={d.currentClass} small /></td>
+
+        {/* Predicted class */}
+        <td style={{ padding:"0 8px", width:"88px" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:"3px" }}>
+            {d.predictedClass !== d.currentClass && <span style={{ fontSize:"9px", color:"#C0C8D4" }}>→</span>}
+            <ClassBadge cls={d.predictedClass} small />
+          </div>
+        </td>
+
+        {/* Evidence */}
+        <td style={{ padding:"0 8px", width:"104px" }}>
+          <div style={{ fontFamily:"var(--mono)", fontSize:"10px", color: d.evidence.r2===null ? "#A37000" : "#0B1F3A" }}>
+            {d.evidence.runs}R{d.evidence.r2 !== null ? ` R²${d.evidence.r2}` : " provisional"}
+          </div>
+        </td>
+
+        {/* GMT to threshold */}
+        <td style={{ padding:"0 8px", width:"84px" }}>
+          {d.gmtToThreshold===0
+            ? <span style={{ fontFamily:"var(--mono)", fontSize:"10px", fontWeight:700, color:"#C8102E" }}>BREACHED</span>
+            : <span style={{ fontFamily:"var(--mono)", fontSize:"11px", fontWeight:600, color: d.gmtToThreshold<2?"#C8102E":d.gmtToThreshold<4?"#A37000":"#1F7A4D" }}>{d.gmtToThreshold} GMT</span>
+          }
+        </td>
+
+        {/* Track geometry */}
+        <td style={{ padding:"0 8px", width:"76px" }}>
+          <span style={{ fontFamily:"var(--mono)", fontSize:"10px", color:"#506070" }}>{d.trackGeom}</span>
+        </td>
+
+        {/* Probe */}
+        <td style={{ padding:"0 8px", width:"66px" }}>
+          <span style={{ fontFamily:"var(--mono)", fontSize:"10px", color:"#0B1F3A" }}>{d.probe}</span>
+        </td>
+
+        {/* Active SR */}
+        <td style={{ padding:"0 8px", width:"72px" }}>
+          {d.activeSR
+            ? <span style={{ fontFamily:"var(--mono)", fontSize:"9.5px", fontWeight:600, color:"#C8102E", background:"#FFF0F2", border:"1px solid #F0B0B8", borderRadius:"3px", padding:"1px 4px" }}>{d.activeSR}</span>
+            : <span style={{ fontSize:"10px", color:"#C0C8D4" }}>—</span>}
+        </td>
+
+        {/* Sparkline */}
+        <td style={{ padding:"0 6px", width:"76px" }}>
+          <Sparkline data={d.amplitudeData} cls={d.currentClass} />
+        </td>
+
+        {/* Work order */}
+        <td style={{ padding:"0 8px", width:"80px" }}>
+          <button onClick={e => { e.stopPropagation(); onExport(d); }} style={{ padding:"2px 7px", fontSize:"9.5px", fontWeight:600, background:"#FFFFFF", color:"#0B1F3A", border:"1px solid #C0C8D4", borderRadius:"3px", cursor:"pointer", whiteSpace:"nowrap" }}>
+            Annex III
+          </button>
+        </td>
+      </tr>
+    );
+  }
+
+  const colHeaders = (
+    <tr style={{ background:"#F8F9FB" }}>
+      <th style={{ ...thStyle, width:"28px" }}>#</th>
+      <th style={{ ...thStyle, width:"124px" }}>
+        KM &amp; TP {tweaks.showHindi && <span style={{ display:"block", fontWeight:400, fontSize:"7.5px", textTransform:"none", letterSpacing:0, color:"#C0CACE" }}>स्थान</span>}
+      </th>
+      <th style={{ ...thStyle, width:"100px" }}>UIC Code</th>
+      <th style={{ ...thStyle, width:"72px" }}>Current {tweaks.showHindi && <span style={{ display:"block", fontWeight:400, fontSize:"7.5px", textTransform:"none", letterSpacing:0, color:"#C0CACE" }}>वर्तमान</span>}</th>
+      <th style={{ ...thStyle, width:"88px" }}>Predicted {tweaks.showHindi && <span style={{ display:"block", fontWeight:400, fontSize:"7.5px", textTransform:"none", letterSpacing:0, color:"#C0CACE" }}>अनुमानित</span>}</th>
+      <th style={{ ...thStyle, width:"104px" }}>Evidence</th>
+      <th style={{ ...thStyle, width:"84px" }}>GMT↓ {tweaks.showHindi && <span style={{ display:"block", fontWeight:400, fontSize:"7.5px", textTransform:"none", letterSpacing:0, color:"#C0CACE" }}>जीएमटी</span>}</th>
+      <th style={{ ...thStyle, width:"76px" }}>Geometry</th>
+      <th style={{ ...thStyle, width:"66px" }}>Probe</th>
+      <th style={{ ...thStyle, width:"72px" }}>Active SR {tweaks.showHindi && <span style={{ display:"block", fontWeight:400, fontSize:"7.5px", textTransform:"none", letterSpacing:0, color:"#C0CACE" }}>गति प्रतिबंध</span>}</th>
+      <th style={{ ...thStyle, width:"76px" }}>Growth</th>
+      <th style={{ ...thStyle, width:"80px" }}>Work Order</th>
+    </tr>
+  );
+
+  let globalIdx = 0;
+
+  function renderBucket(rows) {
+    return rows.map(d => {
+      globalIdx++;
+      const gi = globalIdx;
+      return (
+        <TableRow key={d.id} d={d} idx={gi}
+          isHovered={hoveredId===d.id && !selectedDefect}
+          isSelected={selectedDefect?.id===d.id}
+          onHover={() => { if (!selectedDefect) setHoveredId(d.id); }}
+          onLeave={() => { if (!selectedDefect) setHoveredId(null); }}
+          onClick={() => handleRowClick(d)}
+          onExport={handleExport}
+        />
+      );
+    });
+  }
+
+  const NAV_ITEMS = [
+    {icon:"≡",label:"Queue",active:true,href:"Priority Queue.html"},
+    {icon:"◈",label:"Map",href:"Track Map.html"},
+    {icon:"∿",label:"Defect",href:"Defect Detail.html"},
+    {icon:"⊞",label:"Cluster",href:"Cluster View.html"},
+    {icon:"↑",label:"Import",href:"Inspection Run Import.html"},
+    {icon:"□",label:"Annex",href:"Annexure III Form.html"},
+    {icon:"⊙",label:"Zone",href:"Zone Rollup.html"},
+    {icon:"⬡",label:"Model",href:"Model.html"},
+  ];
+
+  return (
+    <div style={{ display:"flex", height:"100vh", background:"#F0F2F5", overflow:"hidden" }}>
+
+      {/* LEFT NAV */}
+      <nav style={{ width:"52px", flexShrink:0, background:"#0B1F3A", display:"flex", flexDirection:"column", alignItems:"center", gap:"2px" }}>
+        <div style={{ width:"52px", height:"52px", background:"#132D52", display:"flex", alignItems:"center", justifyContent:"center", borderBottom:"1px solid #1C3F6E", flexShrink:0 }}>
+          <span style={{ fontSize:"18px", fontWeight:700, color:"#FF7A1A" }}>⌁</span>
+        </div>
+        {NAV_ITEMS.map(({icon,label,active,href}) => (
+          <div key={label} title={label} onClick={() => { if (!active && href) window.location.href = href; }}
+            style={{ width:"44px", height:"44px", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:"2px", background:active?"#1C3F6E":"transparent", borderRadius:"4px", cursor:active?"default":"pointer", borderLeft:active?"2px solid #FF7A1A":"2px solid transparent" }}>
+            <span style={{ fontSize:"15px", color:active?"#FFFFFF":"#6B8BB0", lineHeight:1 }}>{icon}</span>
+            <span style={{ fontSize:"7.5px", color:active?"#FFFFFF":"#4A6480", letterSpacing:"0.05em", textTransform:"uppercase" }}>{label}</span>
+          </div>
+        ))}
+        <div style={{ marginTop:"auto", marginBottom:"8px" }}>
+          <div style={{ width:"28px", height:"28px", background:"#1C3F6E", borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"10px", fontWeight:700, color:"#FFFFFF", cursor:"pointer" }}>IR</div>
+        </div>
+      </nav>
+
+      {/* MAIN */}
+      <div style={{ flex:1, display:"flex", flexDirection:"column", minWidth:0, overflow:"hidden" }}>
+
+        {/* TOP BAR */}
+        <header style={{ height:"48px", background:"#FFFFFF", borderBottom:"1px solid #D8DCE3", display:"flex", alignItems:"center", padding:"0 18px", gap:"14px", flexShrink:0 }}>
+          <div>
+            <div style={{ fontSize:"13px", fontWeight:700, color:"#0B1F3A" }}>Aonami Echo</div>
+            {tweaks.showHindi && <div style={{ fontSize:"9px", color:"#8A95A3" }}>एको — USFD Run-on-Run Triage</div>}
+          </div>
+          <div style={{ width:"1px", height:"24px", background:"#E5E5E5" }} />
+
+          {/* Rail/Weld toggle */}
+          <div style={{ display:"flex", gap:"2px", background:"#F0F2F5", borderRadius:"4px", padding:"2px" }}>
+            {["Both","Rail","Weld"].map(t => (
+              <button key={t} onClick={() => setTypeFilter(t)} style={{ padding:"3px 10px", fontSize:"11px", fontWeight: typeFilter===t?600:400, background: typeFilter===t?"#0B1F3A":"transparent", color: typeFilter===t?"#FFFFFF":"#5A6475", border:"none", borderRadius:"3px", cursor:"pointer" }}>{t}</button>
+            ))}
+          </div>
+
+          {/* Level filter */}
+          <div style={{ display:"flex", gap:"2px" }}>
+            {["All","IMMEDIATE","URGENT","MONITOR","ROUTINE"].map(l => (
+              <button key={l} onClick={() => setLevelFilter(l)}
+                style={{ padding:"3px 7px", fontSize:"10px", fontWeight: levelFilter===l?600:400,
+                  background: levelFilter===l ? (l==="IMMEDIATE"?"#C8102E":l==="URGENT"?"#E5A100":l==="MONITOR"?"#3e9dd6":"#3fb950") : "transparent",
+                  color: levelFilter===l?"#FFFFFF":"#8A95A3",
+                  border:"1px solid "+(levelFilter===l?(l==="IMMEDIATE"?"#C8102E":l==="URGENT"?"#E5A100":l==="MONITOR"?"#3e9dd6":"#3fb950"):"transparent"),
+                  borderRadius:"3px", cursor:"pointer" }}>
+                {l==="All"?"All levels":l}
+              </button>
+            ))}
+          </div>
+
+          {/* Railway filter */}
+          <select value={railwayFilter} onChange={e => setRailwayFilter(e.target.value)}
+            style={{ padding:"3px 7px", fontSize:"11px", border:"1px solid #D8DCE3", borderRadius:"3px", background:"#FFF", color:"#0B1F3A" }}>
+            <option value="All">All railways</option>
+            {railways.map(r => <option key={r} value={r}>{r.replace(" Railway","")}</option>)}
+          </select>
+
+          <div style={{ marginLeft:"auto", display:"flex", gap:"10px", alignItems:"center" }}>
+            {loading && <span style={{ fontSize:"10px", color:"#8A95A3" }}>Loading…</span>}
+            {error && <span style={{ fontSize:"10px", color:"#E5A100", fontWeight:600 }}>⚠ {error}</span>}
+            <span style={{ fontSize:"10px", color:"#8A95A3" }}>
+              {stats.defects ? <><span style={{ fontFamily:"var(--mono)", color:"#0B1F3A", fontWeight:600 }}>{stats.defects.toLocaleString()}</span> defects · <span style={{ fontFamily:"var(--mono)", color:"#0B1F3A" }}>{stats.unique_railways || "—"}</span> railways</> : "—"}
+            </span>
+            <button onClick={() => window.location.href="Model.html"}
+              style={{ padding:"4px 11px", fontSize:"10.5px", fontWeight:600, background:"#132D52", color:"#FFFFFF", border:"none", borderRadius:"3px", cursor:"pointer" }}>
+              Model ⬡
+            </button>
+          </div>
+        </header>
+
+        {/* BODY */}
+        <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+          {/* KPIs */}
+          <div style={{ padding:"10px 18px 8px", display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:"7px", flexShrink:0 }}>
+            <KpiTile label="Active IMR / IMRW" labelHi={tweaks.showHindi?"तत्काल हटाओ":null} value={imrActive} sub="Regulatory clock running" accent="#C8102E" mono />
+            <KpiTile label="SLA overdue" labelHi={tweaks.showHindi?"समय सीमा उल्लंघन":null} value={slaOverdue} sub="24-hr or 3-day breach" accent="#C8102E" mono />
+            <KpiTile label="Escalating (URGENT)" labelHi={tweaks.showHindi?"अवलोकित → तत्काल":null} value={stats.by_level?.URGENT || obsEscalating} sub="Next inspection risk" accent="#E5A100" mono />
+            <KpiTile label="Near-IMR ≥80%FSH" labelHi={tweaks.showHindi?"≥80% आयाम":null} value={stats.near_imr || 0} sub="Approaching immediate removal" accent="#FF7A1A" mono />
+            <KpiTile label="4m Clusters" labelHi={tweaks.showHindi?"समूह उत्क्रमण":null} value={stats.clusters || 0} sub="Para 6.3.2 escalations" accent="#FF7A1A" mono />
+            <KpiTile label="Defects tracked" labelHi={tweaks.showHindi?"कुल दोष":null} value={stats.defects || grouped.length} sub={`${stats.total_defects_with_3_readings || "—"} with ≥3 runs`} accent="#506070" mono />
+          </div>
+
+          {/* Table + panel */}
+          <div style={{ flex:1, display:"flex", overflow:"hidden", margin:"0 18px 10px", gap:"0" }}>
+            <div style={{ flex:1, background:"#FFFFFF", border:"1px solid #D8DCE3", borderRadius:"4px", display:"flex", flexDirection:"column", overflow:"hidden", minWidth:0, borderTopRightRadius:panelDefect?0:undefined, borderBottomRightRadius:panelDefect?0:undefined, borderRight:panelDefect?"none":undefined }}>
+
+              {/* Sticky header */}
+              <div style={{ flexShrink:0, overflowX:"hidden" }}>
+                <table style={{ width:"100%", borderCollapse:"collapse", tableLayout:"fixed" }}>
+                  <thead>{colHeaders}</thead>
+                </table>
+              </div>
+
+              {/* Scrollable rows */}
+              <div style={{ flex:1, overflowY:"auto", overflowX:"hidden" }}>
+                <table style={{ width:"100%", borderCollapse:"collapse", tableLayout:"fixed" }}>
+                  <tbody>
+                    {/* BUCKET A */}
+                    {(() => { globalIdx = 0; return null; })()}
+                    <BucketHeader
+                      label="Active IMR / IMRW — Compliance action required"
+                      labelHi={tweaks.showHindi ? "तत्काल हटाओ — अनुपालन आवश्यक" : null}
+                      count={bucketA.length}
+                      accent="#C8102E"
+                      description="RDSO deadlines running · sub-sorted by SLA overdue first"
+                    />
+                    {renderBucket(bucketA)}
+
+                    {/* BUCKET B */}
+                    <BucketHeader
+                      label="Predicted to escalate to IMR / IMRW before next inspection"
+                      labelHi={tweaks.showHindi ? "अगले निरीक्षण से पहले उत्क्रमण का अनुमान" : null}
+                      count={bucketB.length}
+                      accent="#E5A100"
+                      description="Sorted by GMT to threshold ↑"
+                    />
+                    {renderBucket(bucketB)}
+
+                    {/* BUCKET C */}
+                    <BucketHeader
+                      label="Watchlist — OBS / OBSW with elevated growth rate"
+                      labelHi={tweaks.showHindi ? "निगरानी सूची" : null}
+                      count={bucketC.length}
+                      accent="#506070"
+                      description="Sorted by GMT to threshold ↑"
+                    />
+                    {renderBucket(bucketC)}
+
+                    {/* BUCKET D */}
+                    <BucketHeader
+                      label="Monitored"
+                      labelHi={tweaks.showHindi ? "अनुवीक्षित" : null}
+                      count={bucketD.length}
+                      accent="#1F7A4D"
+                      description="No escalation predicted within current inspection cycle"
+                      collapsed={monitoredCollapsed}
+                      onToggle={() => setMonitoredCollapsed(c => !c)}
+                    />
+                    {!monitoredCollapsed && renderBucket(bucketD)}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Footer */}
+              <div style={{ padding:"5px 14px", borderTop:"1px solid #E5E5E5", display:"flex", justifyContent:"space-between", alignItems:"center", background:"#F8F9FB", flexShrink:0 }}>
+                <span style={{ fontSize:"9.5px", color:"#8A95A3" }}>
+                  {grouped.length} defects shown · <span style={{ color:"#C8102E" }}>●</span> cluster · hover → growth preview · click → lock panel
+                </span>
+                <div style={{ display:"flex", alignItems:"center", gap:"8px" }}>
+                  <button onClick={() => window.location.href="Model.html"} style={{ fontSize:"9px", color:"#506070", background:"none", border:"1px solid #D8DCE3", borderRadius:"3px", padding:"2px 8px", cursor:"pointer" }}>
+                    ⬡ Growth Model
+                  </button>
+                  <span style={{ fontSize:"9px", color:"#B0BACA" }}>Aonami Echo · USFD Run-on-Run · Indian Railways</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Side panel */}
+            {panelDefect && (
+              <SidePanel defect={panelDefect} onClose={() => { setSelectedDefect(null); setHoveredId(null); }} onExport={handleExport} />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Export toast */}
+      {exportMsg && (
+        <div style={{ position:"fixed", bottom:"20px", left:"50%", transform:"translateX(-50%)", background:"#0B1F3A", color:"#FFFFFF", padding:"9px 18px", borderRadius:"4px", fontSize:"11.5px", fontWeight:500, boxShadow:"0 4px 16px rgba(0,0,0,0.25)", zIndex:1000 }}>
+          {exportMsg}
+        </div>
+      )}
+
+      {/* Tweaks panel */}
+      {tweaksVisible && (
+        <TweaksPanel onClose={() => { setTweaksVisible(false); window.parent.postMessage({ type:"__edit_mode_dismissed" }, "*"); }}>
+          <TweakSection title="Display">
+            <TweakRadio label="Row density" value={tweaks.density} options={[{value:"compact",label:"Compact"},{value:"comfortable",label:"Comfortable"}]} onChange={v => setTweak("density",v)} />
+            <TweakToggle label="Hindi labels" value={tweaks.showHindi} onChange={v => setTweak("showHindi",v)} />
+            <TweakToggle label="Show AT weld agency column" value={tweaks.showWtAgency} onChange={v => setTweak("showWtAgency",v)} />
+          </TweakSection>
+        </TweaksPanel>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+<script src="prototype-nav.js"></script>
+</body>
+</html>

@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Aonami Echo — Growth Models</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: 'IBM Plex Sans', sans-serif; background: #F0F2F5; color: #1A1A1A; font-size: 13px; }
+:root {
+  --navy: #0B1F3A; --navy-mid: #132D52; --navy-light: #1C3F6E;
+  --saffron: #FF7A1A;
+  --red: #C8102E; --amber: #E5A100; --green: #1F7A4D; --slate: #506070;
+  --bg: #F0F2F5; --surface: #FFFFFF; --border: #D8DCE3;
+  --mono: 'IBM Plex Mono', monospace;
+}
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: #C0C8D4; border-radius: 3px; }
+.card { background: #fff; border: 1px solid #D8DCE3; border-radius: 4px; }
+.section-label { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: #8A95A3; }
+.mono { font-family: var(--mono); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+const API_BASE = window.location.origin;
+const api = (path) => fetch(API_BASE + path).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+
+/* ─── HELPERS ───────────────────────────────────────────────────── */
+function fmt(v, d=2) { return v == null ? "—" : Number(v).toFixed(d); }
+function fmtE(v) { return v == null ? "—" : Number(v).toExponential(3); }
+
+/* ─── PARIS-ERDOGAN CURVE CHART ─────────────────────────────────── */
+function ParisCurve({ family, C, m, highlight }) {
+  if (!C || !m) return null;
+  const W=280, H=140, PAD={top:14,right:12,bottom:30,left:46};
+  const cw = W-PAD.left-PAD.right, ch = H-PAD.top-PAD.bottom;
+  // a from 5% to 95% FSH
+  const amps = Array.from({length:40},(_,i)=>5+i*2.3);
+  const rates = amps.map(a => C * Math.pow(a, m));
+  const maxRate = Math.max(...rates);
+  const toX = a => PAD.left + ((a-5)/(90))*cw;
+  const toY = r => PAD.top + ch - (r/maxRate)*ch;
+  const pts = amps.map((a,i)=>`${toX(a)},${toY(rates[i])}`).join(" ");
+  const threshColors = [[30,"#E5A100"],[60,"#C8102E"],[80,"#C8102E"]];
+  return (
+    <svg width={W} height={H} style={{display:"block",overflow:"visible"}}>
+      {[0.25,0.5,0.75,1.0].map(f=>(
+        <g key={f}>
+          <line x1={PAD.left} y1={toY(f*maxRate)} x2={W-PAD.right} y2={toY(f*maxRate)} stroke="#EEF0F3" strokeWidth="1"/>
+          <text x={PAD.left-4} y={toY(f*maxRate)+4} textAnchor="end" fontSize="8" fill="#8A95A3" fontFamily="IBM Plex Mono">{(f*maxRate).toFixed(2)}</text>
+        </g>
+      ))}
+      {threshColors.map(([a,c])=>(
+        <line key={a} x1={toX(a)} y1={PAD.top} x2={toX(a)} y2={PAD.top+ch} stroke={c} strokeWidth="1" strokeDasharray="3,2" opacity="0.6"/>
+      ))}
+      <polyline points={pts} fill="none" stroke={highlight?"#FF7A1A":"#0B1F3A"} strokeWidth={highlight?2.5:1.8} strokeLinejoin="round"/>
+      {highlight && amps.filter((_,i)=>i%8===0).map((a,i)=>(
+        <circle key={i} cx={toX(a)} cy={toY(rates[amps.indexOf(a)])} r="2.5" fill="#FF7A1A"/>
+      ))}
+      <line x1={PAD.left} y1={PAD.top+ch} x2={W-PAD.right} y2={PAD.top+ch} stroke="#D8DCE3" strokeWidth="1"/>
+      <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={PAD.top+ch} stroke="#D8DCE3" strokeWidth="1"/>
+      {[20,40,60,80].map(a=>(
+        <text key={a} x={toX(a)} y={PAD.top+ch+11} textAnchor="middle" fontSize="8" fill="#8A95A3" fontFamily="IBM Plex Mono">{a}%</text>
+      ))}
+      <text x={PAD.left+cw/2} y={H-2} textAnchor="middle" fontSize="8" fill="#8A95A3">Amplitude (%FSH)</text>
+      <text x={10} y={PAD.top+ch/2} textAnchor="middle" fontSize="8" fill="#8A95A3" transform={`rotate(-90,10,${PAD.top+ch/2})`}>da/dN (%/GMT)</text>
+    </svg>
+  );
+}
+
+/* ─── RUL HISTOGRAM ─────────────────────────────────────────────── */
+function RulHistogram({ buckets }) {
+  if (!buckets) return null;
+  const items = [
+    { label:"Already ≥80%", key:"already_imr",  color:"#C8102E" },
+    { label:"<1 yr",         key:"lt_1yr",       color:"#C8102E" },
+    { label:"1–2 yr",        key:"1_to_2yr",     color:"#E5A100" },
+    { label:"2–5 yr",        key:"2_to_5yr",     color:"#F0C040" },
+    { label:">5 yr",         key:"gt_5yr",       color:"#3e9dd6" },
+    { label:"Stable",        key:"stable",       color:"#3fb950" },
+  ];
+  const total = items.reduce((s,it)=>s+(buckets[it.key]||0),0)||1;
+  const maxV = Math.max(...items.map(it=>buckets[it.key]||0))||1;
+  const W=340, H=160, PAD={top:10,right:10,bottom:50,left:46};
+  const bw = (W-PAD.left-PAD.right)/items.length;
+  const ch = H-PAD.top-PAD.bottom;
+  const toY = v => PAD.top + ch - (v/maxV)*ch;
+  return (
+    <svg width={W} height={H} style={{display:"block",overflow:"visible"}}>
+      {[0.25,0.5,0.75,1.0].map(f=>(
+        <g key={f}>
+          <line x1={PAD.left} y1={toY(f*maxV)} x2={W-PAD.right} y2={toY(f*maxV)} stroke="#EEF0F3" strokeWidth="1"/>
+          <text x={PAD.left-4} y={toY(f*maxV)+4} textAnchor="end" fontSize="8" fill="#8A95A3" fontFamily="IBM Plex Mono">{Math.round(f*maxV)}</text>
+        </g>
+      ))}
+      {items.map((it,i)=>{
+        const v = buckets[it.key]||0;
+        const bh = (v/maxV)*ch;
+        const x = PAD.left + i*bw + 4;
+        const y = toY(v);
+        return (
+          <g key={it.key}>
+            <rect x={x} y={y} width={bw-8} height={bh} fill={it.color} opacity="0.85" rx="2"/>
+            <text x={x+(bw-8)/2} y={y-4} textAnchor="middle" fontSize="8.5" fill={it.color} fontFamily="IBM Plex Mono" fontWeight="600">{v}</text>
+            <text x={x+(bw-8)/2} y={PAD.top+ch+12} textAnchor="middle" fontSize="8" fill="#5A6475">{it.label}</text>
+            <text x={x+(bw-8)/2} y={PAD.top+ch+22} textAnchor="middle" fontSize="7.5" fill="#8A95A3">
+              {((v/total)*100).toFixed(0)}%
+            </text>
+          </g>
+        );
+      })}
+      <line x1={PAD.left} y1={PAD.top+ch} x2={W-PAD.right} y2={PAD.top+ch} stroke="#D8DCE3" strokeWidth="1"/>
+      <text x={PAD.left+(W-PAD.left-PAD.right)/2} y={H-2} textAnchor="middle" fontSize="8" fill="#8A95A3">Years to 80%FSH (IMR threshold)</text>
+    </svg>
+  );
+}
+
+/* ─── AMPLITUDE BAND CHART ──────────────────────────────────────── */
+function AmpBands({ bands }) {
+  if (!bands) return null;
+  const items = [
+    { label:"<30%FSH",   key:"lt_30",    color:"#3fb950", note:"Routine" },
+    { label:"30–60%",    key:"band_30_60", color:"#3e9dd6", note:"Monitor" },
+    { label:"60–80%",    key:"band_60_80", color:"#E5A100", note:"Urgent" },
+    { label:"≥80%FSH",   key:"gte_80",   color:"#C8102E", note:"IMR" },
+  ];
+  const total = items.reduce((s,it)=>s+(bands[it.key]||0),0)||1;
+  return (
+    <div style={{width:"100%"}}>
+      {items.map(it=>{
+        const v = bands[it.key]||0;
+        const pct = (v/total)*100;
+        return (
+          <div key={it.key} style={{marginBottom:"8px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:"3px"}}>
+              <span style={{fontSize:"10px",color:"#5A6475"}}>{it.label} <span style={{color:"#8A95A3",fontSize:"9px"}}>{it.note}</span></span>
+              <span style={{fontFamily:"var(--mono)",fontSize:"10px",fontWeight:600,color:it.color}}>{v.toLocaleString()} <span style={{fontWeight:400,color:"#8A95A3"}}>({pct.toFixed(1)}%)</span></span>
+            </div>
+            <div style={{height:"8px",background:"#EEF0F3",borderRadius:"4px",overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${pct}%`,background:it.color,borderRadius:"4px"}}/>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ─── FAMILY GROWTH CHART ───────────────────────────────────────── */
+function FamilyRiskChart({ families }) {
+  if (!families || !families.length) return null;
+  const W=440, H=180, PAD={top:14,right:16,bottom:56,left:50};
+  const n = families.length;
+  const bw = (W-PAD.left-PAD.right)/n;
+  const maxAmp = Math.max(...families.map(f=>f.avg_amp||0), 60);
+  const ch = H-PAD.top-PAD.bottom;
+  const toY = v => PAD.top + ch - (v/maxAmp)*ch;
+  const gridLines = [20,40,60,80,100].filter(v=>v<=maxAmp);
+  return (
+    <svg width={W} height={H} style={{display:"block",overflow:"visible"}}>
+      {gridLines.map(v=>(
+        <g key={v}>
+          <line x1={PAD.left} y1={toY(v)} x2={W-PAD.right} y2={toY(v)} stroke="#EEF0F3" strokeWidth="1"/>
+          <text x={PAD.left-4} y={toY(v)+4} textAnchor="end" fontSize="8" fill="#8A95A3" fontFamily="IBM Plex Mono">{v}%</text>
+        </g>
+      ))}
+      {/* 80% IMR line */}
+      <line x1={PAD.left} y1={toY(80)} x2={W-PAD.right} y2={toY(80)} stroke="#C8102E" strokeWidth="1.5" strokeDasharray="4,3" opacity="0.7"/>
+      <text x={W-PAD.right+3} y={toY(80)+4} fontSize="8" fill="#C8102E" fontFamily="IBM Plex Mono">80%</text>
+      {families.map((f,i)=>{
+        const avg = f.avg_amp||0;
+        const nimr = f.near_imr||0;
+        const bh = (avg/maxAmp)*ch;
+        const x = PAD.left + i*bw + 5;
+        const color = avg>=60?"#C8102E":avg>=40?"#E5A100":"#3e9dd6";
+        const familyShort = (f.family||"").replace("__GLOBAL__","All").replace("rail:","R/").replace("weld:","W/");
+        return (
+          <g key={f.family}>
+            <rect x={x} y={toY(avg)} width={bw-10} height={bh} fill={color} opacity="0.8" rx="2"/>
+            {nimr > 0 && (
+              <rect x={x} y={toY(avg)-nimr*0.3} width={bw-10} height={nimr*0.3} fill="#C8102E" opacity="0.5" rx="1"/>
+            )}
+            <text x={x+(bw-10)/2} y={toY(avg)-5} textAnchor="middle" fontSize="8.5" fill={color} fontFamily="IBM Plex Mono" fontWeight="600">{avg?.toFixed(0)}%</text>
+            <text x={x+(bw-10)/2} y={PAD.top+ch+13} textAnchor="middle" fontSize="8" fill="#5A6475"
+              transform={`rotate(-35,${x+(bw-10)/2},${PAD.top+ch+13})`}>{familyShort}</text>
+          </g>
+        );
+      })}
+      <line x1={PAD.left} y1={PAD.top+ch} x2={W-PAD.right} y2={PAD.top+ch} stroke="#D8DCE3" strokeWidth="1"/>
+      <text x={PAD.left+(W-PAD.left-PAD.right)/2} y={H-2} textAnchor="middle" fontSize="8" fill="#8A95A3">Defect family (asset:probe)</text>
+      <text x={10} y={PAD.top+ch/2} textAnchor="middle" fontSize="8" fill="#8A95A3" transform={`rotate(-90,10,${PAD.top+ch/2})`}>Avg %FSH amplitude</text>
+    </svg>
+  );
+}
+
+/* ─── KPI TILE ──────────────────────────────────────────────────── */
+function KpiTile({ label, value, sub, accent, mono }) {
+  return (
+    <div style={{ background:"#FFFFFF", border:"1px solid #D8DCE3", borderRadius:"4px", padding:"10px 14px", borderTop:`3px solid ${accent||"transparent"}` }}>
+      <div style={{ fontSize:"9px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.08em" }}>{label}</div>
+      <div style={{ fontFamily: mono ? "var(--mono)" : undefined, fontSize:"22px", fontWeight:700, color:"#0B1F3A", marginTop:"3px", lineHeight:1 }}>{value ?? "—"}</div>
+      {sub && <div style={{ fontSize:"9.5px", color:"#8A95A3", marginTop:"3px" }}>{sub}</div>}
+    </div>
+  );
+}
+
+/* ─── MAIN APP ──────────────────────────────────────────────────── */
+function App() {
+  const [meta, setMeta] = useState(null);
+  const [families, setFamilies] = useState([]);
+  const [rul, setRul] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [selectedFamily, setSelectedFamily] = useState(null);
+  const [activeTab, setActiveTab] = useState("overview");
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      api("/api/model"),
+      api("/api/model/families"),
+      api("/api/model/rul-distribution"),
+    ]).then(([m, fams, rulDist]) => {
+      setMeta(m);
+      setFamilies(fams);
+      setRul(rulDist);
+      if (fams.length) setSelectedFamily(fams[0].family);
+      setLoading(false);
+    }).catch(e => {
+      setError("Could not load model data: " + e.message);
+      setLoading(false);
+    });
+  }, []);
+
+  const NAV_ITEMS = [
+    {icon:"≡",label:"Queue",href:"Priority Queue.html"},
+    {icon:"◈",label:"Map",href:"Track Map.html"},
+    {icon:"∿",label:"Defect",href:"Defect Detail.html"},
+    {icon:"⊞",label:"Cluster",href:"Cluster View.html"},
+    {icon:"↑",label:"Import",href:"Inspection Run Import.html"},
+    {icon:"□",label:"Annex",href:"Annexure III Form.html"},
+    {icon:"⊙",label:"Zone",href:"Zone Rollup.html"},
+    {icon:"⬡",label:"Model",active:true,href:"Model.html"},
+  ];
+
+  const selFam = families.find(f=>f.family===selectedFamily);
+
+  const tabs = [
+    { id:"overview", label:"Overview" },
+    { id:"paris", label:"Paris–Erdogan Families" },
+    { id:"rul", label:"RUL Distribution" },
+    { id:"ml", label:"ML Scorecard" },
+    { id:"triage", label:"Triage Rules" },
+  ];
+
+  return (
+    <div style={{ display:"flex", height:"100vh", background:"#F0F2F5", overflow:"hidden" }}>
+      {/* LEFT NAV */}
+      <nav style={{ width:"52px", flexShrink:0, background:"#0B1F3A", display:"flex", flexDirection:"column", alignItems:"center", gap:"2px" }}>
+        <div style={{ width:"52px", height:"52px", background:"#132D52", display:"flex", alignItems:"center", justifyContent:"center", borderBottom:"1px solid #1C3F6E", flexShrink:0 }}>
+          <span style={{ fontSize:"18px", fontWeight:700, color:"#FF7A1A" }}>⌁</span>
+        </div>
+        {NAV_ITEMS.map(({icon,label,active,href}) => (
+          <div key={label} title={label} onClick={() => { if (!active && href) window.location.href = href; }}
+            style={{ width:"44px", height:"44px", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:"2px", background:active?"#1C3F6E":"transparent", borderRadius:"4px", cursor:active?"default":"pointer", borderLeft:active?"2px solid #FF7A1A":"2px solid transparent" }}>
+            <span style={{ fontSize:"15px", color:active?"#FFFFFF":"#6B8BB0", lineHeight:1 }}>{icon}</span>
+            <span style={{ fontSize:"7.5px", color:active?"#FFFFFF":"#4A6480", letterSpacing:"0.05em", textTransform:"uppercase" }}>{label}</span>
+          </div>
+        ))}
+      </nav>
+
+      {/* MAIN */}
+      <div style={{ flex:1, display:"flex", flexDirection:"column", minWidth:0, overflow:"hidden" }}>
+        {/* TOP BAR */}
+        <header style={{ height:"48px", background:"#FFFFFF", borderBottom:"1px solid #D8DCE3", display:"flex", alignItems:"center", padding:"0 18px", gap:"14px", flexShrink:0 }}>
+          <div>
+            <div style={{ fontSize:"13px", fontWeight:700, color:"#0B1F3A" }}>Growth Models</div>
+            <div style={{ fontSize:"9px", color:"#8A95A3" }}>Paris–Erdogan · RUL Projection · HistGBM · RDSO Triage</div>
+          </div>
+          <div style={{ marginLeft:"auto", display:"flex", gap:"8px" }}>
+            <button onClick={() => window.location.href="Priority Queue.html"}
+              style={{ padding:"4px 12px", fontSize:"10.5px", fontWeight:600, background:"#F0F2F5", color:"#0B1F3A", border:"1px solid #D8DCE3", borderRadius:"3px", cursor:"pointer" }}>
+              ← Priority Queue
+            </button>
+          </div>
+        </header>
+
+        {/* TABS */}
+        <div style={{ background:"#FFFFFF", borderBottom:"1px solid #D8DCE3", padding:"0 18px", display:"flex", gap:"0", flexShrink:0 }}>
+          {tabs.map(t=>(
+            <button key={t.id} onClick={()=>setActiveTab(t.id)}
+              style={{ padding:"10px 16px", fontSize:"11.5px", fontWeight: activeTab===t.id?600:400,
+                color: activeTab===t.id?"#0B1F3A":"#8A95A3",
+                borderBottom: activeTab===t.id?"2px solid #FF7A1A":"2px solid transparent",
+                background:"none", border:"none", borderBottom: activeTab===t.id?"2px solid #FF7A1A":"2px solid transparent",
+                cursor:"pointer", transition:"all 0.1s" }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* BODY */}
+        <div style={{ flex:1, overflowY:"auto", padding:"16px 18px" }}>
+          {loading && (
+            <div style={{ textAlign:"center", padding:"60px", color:"#8A95A3" }}>Loading model data…</div>
+          )}
+          {error && (
+            <div style={{ background:"#FFF8E6", border:"1px solid #E5A100", borderRadius:"4px", padding:"12px 16px", marginBottom:"16px", fontSize:"11.5px", color:"#9A6600" }}>
+              ⚠ {error}
+            </div>
+          )}
+
+          {/* ── OVERVIEW TAB ── */}
+          {!loading && activeTab === "overview" && (
+            <div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:"8px", marginBottom:"16px" }}>
+                <KpiTile label="Defects in model" value={(meta?.n_defects || 0).toLocaleString()} sub={`${(meta?.n_training_transitions||0).toLocaleString()} transition pairs`} accent="#0B1F3A" mono/>
+                <KpiTile label="ML model MAE" value={`${fmt(meta?.model_mae,2)} %FSH`} sub="5-fold GroupKFold CV" accent="#3e9dd6" mono/>
+                <KpiTile label="Persistence MAE" value={`${fmt(meta?.persistence_mae,2)} %FSH`} sub="Strong baseline (≤3 readings)" accent="#506070" mono/>
+                <KpiTile label="Defect families" value={families.length} sub="asset × probe-angle" accent="#FF7A1A" mono/>
+              </div>
+
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px", marginBottom:"12px" }}>
+                {/* Architecture summary */}
+                <div className="card" style={{ padding:"16px" }}>
+                  <div className="section-label" style={{ marginBottom:"12px" }}>Model Architecture — 4 Layers</div>
+                  {[
+                    { n:"1", title:"Spatial Identity", icon:"⊕", desc:"Hungarian assignment — persistent defect ID across runs despite ±3m chainage drift. Per-defect unique key: railway|section|line|km+meter|rail.", color:"#3e9dd6" },
+                    { n:"2", title:"Paris–Erdogan Power Law", icon:"∿", desc:"da/dN = C·aᵐ per defect family (asset×probe). Fitted on positive-growth segments. C and m from least-squares log-space regression.", color:"#FF7A1A" },
+                    { n:"3", title:"RUL Projection", icon:"⏱", desc:"Per-defect own-slope (GMT-axis), shrunk toward family median. Projected to 30/60/80%FSH thresholds → GMT and years to IMR. Bootstrap CI not yet implemented.", color:"#E5A100" },
+                    { n:"4", title:"HistGBM Next-Reading", icon:"⬡", desc:"HistGradientBoosting predicting next %FSH. Features: amp_prev, slope_prev, dN, dt_days, gmt_rate, asset, probe, railway. GroupKFold to prevent leakage.", color:"#506070" },
+                  ].map(row=>(
+                    <div key={row.n} style={{ display:"flex", gap:"12px", padding:"10px 0", borderBottom:"1px solid #F0F0F0" }}>
+                      <div style={{ width:"28px", height:"28px", background:row.color+"18", border:`1px solid ${row.color}40`, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, color:row.color, fontSize:"13px" }}>{row.icon}</div>
+                      <div>
+                        <div style={{ fontSize:"11.5px", fontWeight:600, color:"#0B1F3A", marginBottom:"3px" }}>Layer {row.n} — {row.title}</div>
+                        <div style={{ fontSize:"10.5px", color:"#5A6475", lineHeight:1.5 }}>{row.desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Fleet-level RUL snapshot */}
+                <div className="card" style={{ padding:"16px" }}>
+                  <div className="section-label" style={{ marginBottom:"12px" }}>Fleet RUL Snapshot — Time to 80%FSH (IMR)</div>
+                  <RulHistogram buckets={rul?.rul_buckets} />
+                  {rul?.amplitude_bands && (
+                    <div style={{ marginTop:"16px" }}>
+                      <div className="section-label" style={{ marginBottom:"10px" }}>Current Amplitude Distribution (RDSO Annexure II-A bands)</div>
+                      <AmpBands bands={rul.amplitude_bands}/>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Family risk summary table */}
+              <div className="card" style={{ padding:"16px", marginBottom:"12px" }}>
+                <div className="section-label" style={{ marginBottom:"10px" }}>Average Amplitude by Family</div>
+                <FamilyRiskChart families={rul?.family_risk?.filter(f=>f.family!=="__GLOBAL__")||[]}/>
+              </div>
+
+              {/* Caveats */}
+              <div className="card" style={{ padding:"14px 16px", background:"#FFFBF0", borderColor:"#E5A100" }}>
+                <div className="section-label" style={{ marginBottom:"8px", color:"#9A6600" }}>Honest caveats</div>
+                <ul style={{ fontSize:"11px", color:"#5A6475", lineHeight:1.8, paddingLeft:"16px" }}>
+                  <li>With ≤3 noisy readings per defect, the ML model does <strong>not</strong> beat persistence on MAE — its value is <strong>ranking the tail</strong>, not per-defect amplitude forecasting.</li>
+                  <li>No real UIC defect codes — families proxied as asset×probe-angle (not fracture geometry).</li>
+                  <li>GMT axis is interpolated linearly between install date and latest inspection; per-date traffic not available.</li>
+                  <li>Amplitude can be non-monotonic and saturates near 99–100%FSH; growth rate means little for near-saturated defects.</li>
+                  <li>Paris–Erdogan ΔK not from crack geometry — empirical amplitude-rate power law only.</li>
+                  <li>Target R²≥0.75 not met on MAE (CV R²=0.69 vs persistence 0.53); spec target should be renegotiated for sparse-data setting.</li>
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {/* ── PARIS TAB ── */}
+          {!loading && activeTab === "paris" && (
+            <div style={{ display:"grid", gridTemplateColumns:"300px 1fr", gap:"16px" }}>
+              {/* Family selector */}
+              <div>
+                <div className="card" style={{ padding:"12px" }}>
+                  <div className="section-label" style={{ marginBottom:"10px" }}>Defect Families ({families.length})</div>
+                  <div style={{ fontSize:"9px", color:"#8A95A3", marginBottom:"8px" }}>Family = asset type × probe angle. Each family has its own Paris–Erdogan power-law fit on positive-growth segments.</div>
+                  {families.map(f=>{
+                    const isSel = f.family === selectedFamily;
+                    return (
+                      <div key={f.family} onClick={()=>setSelectedFamily(f.family)}
+                        style={{ padding:"8px 10px", borderRadius:"3px", cursor:"pointer", marginBottom:"4px",
+                          background: isSel?"#EEF3FA":"transparent",
+                          border: isSel?"1px solid #B0C0E0":"1px solid transparent" }}>
+                        <div style={{ fontFamily:"var(--mono)", fontSize:"11px", fontWeight:600, color: isSel?"#0B1F3A":"#506070" }}>{f.family}</div>
+                        <div style={{ fontSize:"9px", color:"#8A95A3", display:"flex", gap:"8px", marginTop:"2px" }}>
+                          <span>n={f.n_defects}</span>
+                          <span>C={fmtE(f.C)}</span>
+                          <span>m={fmt(f.m)}</span>
+                          <span style={{ color: (f.avg_amp||0)>=60?"#C8102E":(f.avg_amp||0)>=40?"#E5A100":"#1F7A4D" }}>{fmt(f.avg_amp,1)}%FSH avg</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Selected family detail */}
+              <div>
+                {selFam && (
+                  <>
+                    <div className="card" style={{ padding:"16px", marginBottom:"12px" }}>
+                      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:"12px" }}>
+                        <div>
+                          <div style={{ fontFamily:"var(--mono)", fontSize:"16px", fontWeight:700, color:"#0B1F3A" }}>{selFam.family}</div>
+                          <div style={{ fontSize:"10.5px", color:"#8A95A3", marginTop:"3px" }}>{selFam.n_defects} defects · {selFam.n_pos_segments} positive growth segments used in fit</div>
+                        </div>
+                        <div style={{ textAlign:"right" }}>
+                          <div style={{ fontSize:"9px", color:"#8A95A3", marginBottom:"4px" }}>Near-IMR (≥80%FSH)</div>
+                          <div style={{ fontFamily:"var(--mono)", fontSize:"20px", fontWeight:700, color:"#C8102E" }}>{selFam.near_imr}</div>
+                        </div>
+                      </div>
+
+                      {/* Equation display */}
+                      <div style={{ background:"#F4F6FF", border:"1px solid #D0D8F0", borderRadius:"4px", padding:"12px 16px", marginBottom:"14px" }}>
+                        <div className="section-label" style={{ marginBottom:"8px" }}>Paris–Erdogan Law (amplitude-rate form)</div>
+                        <div style={{ fontFamily:"var(--mono)", fontSize:"15px", color:"#0B1F3A", letterSpacing:"0.02em" }}>
+                          da/dN = C · a<sup>m</sup>
+                        </div>
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"12px", marginTop:"12px" }}>
+                          <div>
+                            <div style={{ fontSize:"9px", color:"#8A95A3", marginBottom:"3px" }}>C (coefficient)</div>
+                            <div style={{ fontFamily:"var(--mono)", fontSize:"14px", fontWeight:700, color:"#FF7A1A" }}>{fmtE(selFam.C)}</div>
+                            <div style={{ fontSize:"8.5px", color:"#8A95A3", marginTop:"2px" }}>Growth scale factor</div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize:"9px", color:"#8A95A3", marginBottom:"3px" }}>m (exponent)</div>
+                            <div style={{ fontFamily:"var(--mono)", fontSize:"14px", fontWeight:700, color:"#FF7A1A" }}>{fmt(selFam.m)}</div>
+                            <div style={{ fontSize:"8.5px", color:"#8A95A3", marginTop:"2px" }}>Amplitude sensitivity</div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize:"9px", color:"#8A95A3", marginBottom:"3px" }}>Rate at 50%FSH</div>
+                            <div style={{ fontFamily:"var(--mono)", fontSize:"14px", fontWeight:700, color:"#0B1F3A" }}>{fmt(selFam.growth_per_gmt_at_50pct,3)} %/GMT</div>
+                            <div style={{ fontSize:"8.5px", color:"#8A95A3", marginTop:"2px" }}>da/dN at mid-amplitude</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Curve */}
+                      <div className="section-label" style={{ marginBottom:"8px" }}>Growth Rate Curve — da/dN vs %FSH amplitude</div>
+                      <ParisCurve family={selFam.family} C={selFam.C} m={selFam.m} highlight={true}/>
+                      <div style={{ fontSize:"9px", color:"#8A95A3", marginTop:"6px" }}>
+                        Dashed vertical lines = RDSO thresholds (30/60/80%FSH). Curve shows model-predicted growth rate at each amplitude level.
+                        Higher m → growth accelerates more steeply as amplitude increases.
+                      </div>
+                    </div>
+
+                    {/* All families overlay */}
+                    <div className="card" style={{ padding:"16px" }}>
+                      <div className="section-label" style={{ marginBottom:"10px" }}>All Families — Overlay (selected highlighted in orange)</div>
+                      <svg width="100%" viewBox="0 0 560 160" style={{display:"block"}}>
+                        {(() => {
+                          const W=560, H=160, PAD={top:12,right:14,bottom:30,left:46};
+                          const cw=W-PAD.left-PAD.right, ch=H-PAD.top-PAD.bottom;
+                          const amps = Array.from({length:30},(_,i)=>5+i*3);
+                          const allRates = families.flatMap(f=>amps.map(a=>f.C*Math.pow(a,f.m)));
+                          const maxR = Math.max(...allRates.filter(r=>isFinite(r)&&r<1000), 10);
+                          const toX = a => PAD.left+((a-5)/85)*cw;
+                          const toY = r => PAD.top+ch-Math.min(1,(r/maxR))*ch;
+                          return (
+                            <g>
+                              {[0.25,0.5,0.75,1.0].map(f=>(
+                                <line key={f} x1={PAD.left} y1={toY(f*maxR)} x2={W-PAD.right} y2={toY(f*maxR)} stroke="#EEF0F3" strokeWidth="1"/>
+                              ))}
+                              {[[30,"#E5A100"],[60,"#C8102E"],[80,"#C8102E"]].map(([a,c])=>(
+                                <line key={a} x1={toX(a)} y1={PAD.top} x2={toX(a)} y2={PAD.top+ch} stroke={c} strokeWidth="1" strokeDasharray="3,2" opacity="0.5"/>
+                              ))}
+                              {families.map(f=>{
+                                const isSel = f.family===selFam.family;
+                                const pts = amps.map(a=>{
+                                  const r=f.C*Math.pow(a,f.m);
+                                  return isFinite(r)&&r<=maxR ? `${toX(a)},${toY(r)}` : null;
+                                }).filter(Boolean).join(" ");
+                                return pts ? (
+                                  <polyline key={f.family} points={pts} fill="none"
+                                    stroke={isSel?"#FF7A1A":"#8A95A3"}
+                                    strokeWidth={isSel?2.5:1}
+                                    opacity={isSel?1:0.4}
+                                    strokeLinejoin="round"/>
+                                ) : null;
+                              })}
+                              <line x1={PAD.left} y1={PAD.top+ch} x2={W-PAD.right} y2={PAD.top+ch} stroke="#D8DCE3" strokeWidth="1"/>
+                              {[20,40,60,80].map(a=>(
+                                <text key={a} x={toX(a)} y={PAD.top+ch+12} textAnchor="middle" fontSize="8" fill="#8A95A3" fontFamily="IBM Plex Mono">{a}%</text>
+                              ))}
+                              {[0.25,0.5,1.0].map(f=>(
+                                <text key={f} x={PAD.left-4} y={toY(f*maxR)+4} textAnchor="end" fontSize="8" fill="#8A95A3" fontFamily="IBM Plex Mono">{(f*maxR).toFixed(1)}</text>
+                              ))}
+                            </g>
+                          );
+                        })()}
+                      </svg>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── RUL TAB ── */}
+          {!loading && activeTab === "rul" && rul && (
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"16px" }}>
+              <div className="card" style={{ padding:"16px" }}>
+                <div className="section-label" style={{ marginBottom:"12px" }}>Fleet RUL — Time to 80%FSH (IMR threshold)</div>
+                <RulHistogram buckets={rul.rul_buckets}/>
+                <div style={{ fontSize:"9px", color:"#8A95A3", marginTop:"10px" }}>
+                  RUL = own-slope projection (amplitude vs GMT), shrunk toward family median. Stable = growth rate ≤0.05%FSH/GMT or no positive trend detected.
+                </div>
+              </div>
+              <div className="card" style={{ padding:"16px" }}>
+                <div className="section-label" style={{ marginBottom:"12px" }}>Amplitude Distribution — RDSO Annexure II-A Bands</div>
+                <AmpBands bands={rul.amplitude_bands}/>
+                <div style={{ fontSize:"9px", color:"#8A95A3", marginTop:"12px" }}>
+                  Based on latest inspection amplitude per defect. <br/>
+                  Growth rate: p50={rul.slope_p50} %/GMT · p90={rul.slope_p90} %/GMT · p99={rul.slope_p99} %/GMT
+                </div>
+              </div>
+              <div className="card" style={{ padding:"16px", gridColumn:"span 2" }}>
+                <div className="section-label" style={{ marginBottom:"12px" }}>Family-level Risk Summary</div>
+                <div style={{ overflowX:"auto" }}>
+                  <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"11.5px" }}>
+                    <thead>
+                      <tr style={{ background:"#F8F9FB" }}>
+                        {["Family","Defects","Avg %FSH","Near-IMR (≥80%)","Avg yrs→80%"].map(h=>(
+                          <th key={h} style={{ padding:"6px 12px", textAlign:"left", fontWeight:600, color:"#8A95A3", fontSize:"9.5px", textTransform:"uppercase", letterSpacing:"0.07em", borderBottom:"2px solid #E0E4EA" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(rul.family_risk||[]).filter(f=>f.family!=="__GLOBAL__").map((f,i)=>(
+                        <tr key={f.family} style={{ borderBottom:"1px solid #F0F0F0", background: i%2?"#FAFBFD":"#FFF" }}>
+                          <td style={{ padding:"7px 12px", fontFamily:"var(--mono)", fontWeight:600, color:"#0B1F3A" }}>{f.family}</td>
+                          <td style={{ padding:"7px 12px", fontFamily:"var(--mono)" }}>{f.n}</td>
+                          <td style={{ padding:"7px 12px", fontFamily:"var(--mono)", color: (f.avg_amp||0)>=60?"#C8102E":(f.avg_amp||0)>=40?"#E5A100":"#1F7A4D", fontWeight:600 }}>{fmt(f.avg_amp,1)}%</td>
+                          <td style={{ padding:"7px 12px", fontFamily:"var(--mono)", color:"#C8102E", fontWeight: f.near_imr>0?700:400 }}>{f.near_imr || "—"}</td>
+                          <td style={{ padding:"7px 12px", fontFamily:"var(--mono)", color: (f.avg_yrs_to_80||99)<2?"#C8102E":(f.avg_yrs_to_80||99)<5?"#E5A100":"#1F7A4D" }}>{f.avg_yrs_to_80 != null ? f.avg_yrs_to_80+"y" : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── ML SCORECARD TAB ── */}
+          {!loading && activeTab === "ml" && meta && (
+            <div style={{ maxWidth:"720px" }}>
+              <div className="card" style={{ padding:"16px", marginBottom:"12px" }}>
+                <div className="section-label" style={{ marginBottom:"12px" }}>HistGradientBoosting — Honest CV Scorecard</div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px", marginBottom:"16px" }}>
+                  <div style={{ background:"#F4F6FF", borderRadius:"4px", padding:"12px" }}>
+                    <div style={{ fontSize:"9px", color:"#8A95A3", marginBottom:"4px" }}>Model MAE</div>
+                    <div style={{ fontFamily:"var(--mono)", fontSize:"22px", fontWeight:700, color:"#3e9dd6" }}>{fmt(meta.model_mae)} %FSH</div>
+                    <div style={{ fontSize:"9px", color:"#8A95A3", marginTop:"4px" }}>Model R² = {fmt(meta.model_r2)}</div>
+                  </div>
+                  <div style={{ background:"#F8F9FB", borderRadius:"4px", padding:"12px" }}>
+                    <div style={{ fontSize:"9px", color:"#8A95A3", marginBottom:"4px" }}>Persistence baseline MAE</div>
+                    <div style={{ fontFamily:"var(--mono)", fontSize:"22px", fontWeight:700, color:"#506070" }}>{fmt(meta.persistence_mae)} %FSH</div>
+                    <div style={{ fontSize:"9px", color:"#8A95A3", marginTop:"4px" }}>Persistence R² = {fmt(meta.persistence_r2)}</div>
+                  </div>
+                </div>
+                <div style={{ padding:"10px 14px", borderRadius:"4px", background: meta.beats_persistence_on_mae?"#F0FAF5":"#FFF8E6", border:`1px solid ${meta.beats_persistence_on_mae?"#A0D8BC":"#E5A100"}`, marginBottom:"14px" }}>
+                  <span style={{ fontSize:"11.5px", fontWeight:600, color: meta.beats_persistence_on_mae?"#1F7A4D":"#9A6600" }}>
+                    {meta.beats_persistence_on_mae ? "✓ Model beats persistence on MAE" : "⚠ Persistence wins on MAE — model value is ranking, not per-defect forecasting"}
+                  </span>
+                </div>
+                <div style={{ fontSize:"9px", color:"#8A95A3", marginBottom:"10px" }}>Validation: {meta.cv}</div>
+                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"11.5px" }}>
+                  <tbody>
+                    {[
+                      ["Target (output)", meta.target],
+                      ["Training transitions", `${(meta.n_training_transitions||0).toLocaleString()}`],
+                      ["Defects in training", `${(meta.n_defects||0).toLocaleString()}`],
+                      ["Numeric features", (meta.features_numeric||[]).join(", ")],
+                      ["Categorical features", (meta.features_categorical||[]).join(", ")],
+                    ].map(([k,v])=>(
+                      <tr key={k} style={{ borderBottom:"1px solid #F0F0F0" }}>
+                        <td style={{ padding:"7px 12px", color:"#8A95A3", width:"200px", fontSize:"11px" }}>{k}</td>
+                        <td style={{ padding:"7px 12px", fontFamily:"var(--mono)", fontSize:"10.5px" }}>{v}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="card" style={{ padding:"14px 16px", background:"#FFFBF0", borderColor:"#E5A100" }}>
+                <div className="section-label" style={{ marginBottom:"6px", color:"#9A6600" }}>Note</div>
+                <div style={{ fontSize:"11px", color:"#5A6475", lineHeight:1.6 }}>{meta.note}</div>
+              </div>
+            </div>
+          )}
+
+          {/* ── TRIAGE RULES TAB ── */}
+          {!loading && activeTab === "triage" && (
+            <div style={{ maxWidth:"800px" }}>
+              <div className="card" style={{ padding:"16px", marginBottom:"12px" }}>
+                <div className="section-label" style={{ marginBottom:"12px" }}>RDSO Triage Model — Deterministic Escalation Rules</div>
+                {[
+                  {
+                    level:"IMMEDIATE", color:"#C8102E", bg:"#FFF0F2",
+                    rule:"Amplitude ≥80%FSH (Annexure II-A) OR classification already IMR/IMRW in track OR Para 6.3.2 cluster flag.",
+                    sla:"Joggled fish plate within 24 hours. Rail/weld removal within 3 days. SLA clock starts from inspection date.",
+                    ref:"RDSO USFD Manual 2022 — Para 6.2.3, Annexure II-A"
+                  },
+                  {
+                    level:"URGENT", color:"#E5A100", bg:"#FFF8E6",
+                    rule:"RUL projection: defect reaches 80%FSH within 2 years at current growth rate. Amplitude 60–80%FSH (near-IMR band).",
+                    sla:"Plan removal before next inspection cycle. Increased monitoring frequency.",
+                    ref:"RDSO USFD Manual 2022 — Para 6.3.1"
+                  },
+                  {
+                    level:"MONITOR", color:"#3e9dd6", bg:"#F0F8FF",
+                    rule:"RUL 2–5 years to 80%FSH. Amplitude 30–60%FSH. Positive growth trend confirmed across ≥2 runs.",
+                    sla:"Re-inspect at scheduled interval. Track in Annexure V register.",
+                    ref:"RDSO USFD Manual 2022 — Para 6.4"
+                  },
+                  {
+                    level:"ROUTINE", color:"#3fb950", bg:"#F0FAF5",
+                    rule:"RUL >5 years or effectively stable (growth rate ≤0.05%FSH/GMT). Amplitude <30%FSH or declining.",
+                    sla:"Standard inspection interval. No immediate action required.",
+                    ref:"RDSO USFD Manual 2022 — Para 6.4"
+                  },
+                ].map(row=>(
+                  <div key={row.level} style={{ marginBottom:"12px", padding:"12px 14px", background:row.bg, border:`1px solid ${row.color}40`, borderLeft:`3px solid ${row.color}`, borderRadius:"4px" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:"10px", marginBottom:"8px" }}>
+                      <span style={{ fontFamily:"var(--mono)", fontSize:"11px", fontWeight:700, color:row.color, background:row.color+"18", padding:"2px 8px", borderRadius:"3px" }}>{row.level}</span>
+                      <span style={{ fontSize:"9px", color:"#8A95A3" }}>{row.ref}</span>
+                    </div>
+                    <div style={{ fontSize:"11.5px", color:"#0B1F3A", marginBottom:"6px" }}><strong>Trigger:</strong> {row.rule}</div>
+                    <div style={{ fontSize:"11px", color:"#5A6475" }}><strong>Action:</strong> {row.sla}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="card" style={{ padding:"16px" }}>
+                <div className="section-label" style={{ marginBottom:"12px" }}>Para 6.3.2 — 4-Metre Cluster Rule</div>
+                <div style={{ fontSize:"11.5px", color:"#5A6475", lineHeight:1.7 }}>
+                  When ≥2 defects are located within <strong>4 metres of each other</strong> on the same track (railway × section × line, both rails considered), a single <em>cluster escalation</em> is triggered. The cluster is treated as a <strong>single replacement action</strong> regardless of individual defect classification. Cluster detection uses chainage distance derived from KM + meter point fields.
+                </div>
+                <div style={{ marginTop:"12px", padding:"8px 12px", background:"#F4F6FF", borderRadius:"3px", fontSize:"11px", color:"#506070" }}>
+                  <strong>Implementation:</strong> Conservative approach — both rails on same section considered together. Cluster ID assigned by greedy scan sorted by chainage. Minimum replacement length per RDSO: rail section + 0.5m each side.
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

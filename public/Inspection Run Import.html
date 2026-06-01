@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Aonami Echo — Inspection Run Import</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: 'IBM Plex Sans', sans-serif; background: #F0F2F5; color: #1A1A1A; font-size: 13px; }
+:root {
+  --navy: #0B1F3A; --saffron: #FF7A1A;
+  --red: #C8102E; --amber: #E5A100; --green: #1F7A4D; --slate: #506070;
+  --border: #D8DCE3; --mono: 'IBM Plex Mono', monospace;
+}
+::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-thumb { background: #C0C8D4; border-radius: 3px; }
+
+.card { background: #FFFFFF; border: 1px solid var(--border); border-radius: 4px; }
+.input {
+  width: 100%; padding: 8px 10px; font-family: 'IBM Plex Sans', sans-serif; font-size: 12.5px;
+  border: 1px solid #D0D5DC; border-radius: 3px; background: #FAFAFA; outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.input:focus { border-color: #0B1F3A; box-shadow: 0 0 0 3px rgba(11,31,58,0.08); background: #fff; }
+.input.mono { font-family: var(--mono); letter-spacing: 0.03em; }
+.label { font-size: 10.5px; font-weight: 600; color: #4A5568; letter-spacing: 0.04em; text-transform: uppercase; display: block; margin-bottom: 4px; }
+.label-hi { font-size: 8.5px; color: #B0BACA; font-weight: 400; letter-spacing: 0; text-transform: none; margin-left: 4px; }
+.field { margin-bottom: 14px; }
+.btn-primary { padding: 10px 20px; font-size: 12.5px; font-weight: 700; background: #0B1F3A; color: #fff; border: none; border-radius: 3px; cursor: pointer; font-family: 'IBM Plex Sans', sans-serif; }
+.btn-primary:hover { background: #132D52; }
+.btn-secondary { padding: 9px 16px; font-size: 12px; font-weight: 500; background: #fff; color: #0B1F3A; border: 1px solid #C0C8D4; border-radius: 3px; cursor: pointer; font-family: 'IBM Plex Sans', sans-serif; }
+.badge { display: inline-block; font-family: var(--mono); font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 3px; }
+select.input { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236A7585'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; appearance: none; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useRef, useEffect, useCallback } = React;
+
+/* ─── CONSTANTS ─────────────────────────────────────────────────── */
+const STEPS = ["Upload", "Parse", "Map", "Match", "Confirm"];
+const VENDORS = [
+  { id:"ECIL",     label:"ECIL",        desc:"ECIL DRT/SRT v4.1 — 9-probe B-Scan CSV" },
+  { id:"VIBRONICS",label:"Vibronics",   desc:"Vibronics USFD v2.8 — proprietary XML" },
+  { id:"EEC",      label:"EEC",         desc:"EEC RAIL-SCAN v3.0 — 9-channel CSV" },
+  { id:"PARAS",    label:"Paras",       desc:"Paras DRT v3.2 — 9-channel B-Scan" },
+  { id:"OTHER",    label:"Other",       desc:"Manual column mapping required" },
+];
+const PROBES_9 = ["0°","70°CF","70°CB","70°GF","70°GB","70°NGF","70°NGB","37°CF","37°CB"];
+const PRIOR_OPERATORS = ["SE/JE K. Sharma","SE/JE R. Patil","AEN V. Kulkarni","SE/JE M. Desai"];
+const PRIOR_MACHINES = ["DRT-MUM-01","DRT-MUM-02","SRT-MUM-03"];
+
+/* ─── MOCK PARSE DATA ────────────────────────────────────────────── */
+const MOCK_PARSED_ROWS = [
+  { row:1,  km:"00482-12-04", uic:"111-1.2", probe:"70°CF", fsh:81, rail:"LH", status:"valid" },
+  { row:2,  km:"00482-12-06", uic:"112-1.1", probe:"70°GF", fsh:71, rail:"LH", status:"valid" },
+  { row:3,  km:"00482-12-09", uic:"113-2.1", probe:"70°CF", fsh:48, rail:"RH", status:"valid" },
+  { row:4,  km:"00631-02-08", uic:"212-3.1", probe:"70°CF", fsh:79, rail:"RH", status:"valid" },
+  { row:5,  km:"00712-08-03", uic:"113-4.1", probe:"70°NGF",fsh:61, rail:"LH", status:"valid" },
+  { row:6,  km:"00789-14-04", uic:"211-3.3", probe:"70°CB", fsh:48, rail:"RH", status:"valid" },
+  { row:7,  km:"00892-02-07", uic:"212-1.2", probe:"70°CB", fsh:38, rail:"LH", status:"valid" },
+  { row:8,  km:"00917-04-02", uic:"211-1.2", probe:"70°CB", fsh:79, rail:"RH", status:"valid" },
+  { row:9,  km:"01089-14-03", uic:"135-4.2", probe:"37°CB", fsh:46, rail:"LH", status:"valid" },
+  { row:10, km:"01204-08-06", uic:"IMRW",    probe:"37°CF", fsh:84, rail:"—",  status:"valid" },
+  { row:11, km:"CAL-001",     km:"CAL-001",  uic:"—",       probe:"—",  fsh:null,rail:"—",  status:"calibration" },
+  { row:12, km:"00398-09-04", uic:"135-2.1", probe:"37°CF", fsh:46, rail:"LH", status:"valid" },
+  { row:13, km:"00456-07-09", uic:"111-2.4", probe:"70°GF", fsh:53, rail:"RH", status:"valid" },
+  { row:14, km:"00543-15-01", uic:"113-1.3", probe:"70°GF", fsh:48, rail:"LH", status:"valid" },
+  { row:15, km:"CAL-002",     uic:"—",       probe:"—",  fsh:null,rail:"—",  status:"calibration" },
+  { row:16, km:"00671-05-08", uic:"IMRW",    probe:"37°CF", fsh:76, rail:"—",  status:"valid" },
+  { row:17, km:"00712-08-05", uic:"111-1.4", probe:"70°CF", fsh:29, rail:"LH", status:"valid", warn:"Below OBS threshold — verify probe sensitivity" },
+  { row:18, km:"00754-06-01", uic:"112-1.1", probe:"70°CF", fsh:38, rail:"RH", status:"valid" },
+  { row:19, km:"00812-03-09", uic:"213-2.2", probe:"70°CB", fsh:34, rail:"LH", status:"valid" },
+  { row:20, km:"00892-02-09", uic:"135-3.2", probe:"37°CB", fsh:22, rail:"RH", status:"valid", warn:"Low amplitude — may be spurious echo" },
+];
+
+const COL_MAPPING = [
+  { src:"Chainage",      canonical:"KM & TP",           auto:true,  note:"" },
+  { src:"UIC_CODE",      canonical:"UIC Code",           auto:true,  note:"" },
+  { src:"PROBE_ID",      canonical:"Detection probe",    auto:true,  note:"" },
+  { src:"AMPLITUDE",     canonical:"Amplitude (%FSH)",   auto:true,  note:"" },
+  { src:"RAIL_SIDE",     canonical:"Rail (LH/RH)",       auto:true,  note:"" },
+  { src:"CLASSIFICATION",canonical:"Classification",     auto:false, note:"Needs enum mapping: REM→IMR, OBS→OBS, MON→Monitor" },
+  { src:"OP_DATE",       canonical:"Run date",           auto:true,  note:"" },
+  { src:"MACHINE_SN",    canonical:"Machine serial",     auto:true,  note:"" },
+];
+
+const ENUM_MAP = [
+  { src:"REM",  canonical:"IMR",     confident:true  },
+  { src:"OBS",  canonical:"OBS",     confident:true  },
+  { src:"MON",  canonical:"Monitor", confident:true  },
+  { src:"GCC",  canonical:"GCC",     confident:true  },
+  { src:"DFWR", canonical:"DFWR",    confident:true  },
+  { src:"DFWO", canonical:"DFWO",    confident:true  },
+  { src:"NEW",  canonical:"DFWN",    confident:false, note:"Review — NEW may mean first-detection, not DFWN" },
+];
+
+const MATCH_RESULTS = {
+  matched: [
+    { km:"00482-12-04", uic:"111-1.2", priorClass:"OBS", thisClass:"OBS", fshPrior:74, fshThis:81, gmtSinceLast:6.8, matchConf:98, change:"stable", probes:["70°CF"] },
+    { km:"00631-02-08", uic:"212-3.1", priorClass:"OBS", thisClass:"IMR", fshPrior:63, fshThis:79, gmtSinceLast:7.2, matchConf:97, change:"escalation", probes:["70°CF"] },
+    { km:"00917-04-02", uic:"211-1.2", priorClass:"OBS", thisClass:"IMR", fshPrior:68, fshThis:79, gmtSinceLast:7.1, matchConf:96, change:"escalation", probes:["70°CB"] },
+    { km:"00712-08-03", uic:"113-4.1", priorClass:"OBS", thisClass:"OBS", fshPrior:51, fshThis:61, gmtSinceLast:6.9, matchConf:94, change:"stable", probes:["70°NGF"] },
+    { km:"00789-14-04", uic:"211-3.3", priorClass:"OBS", thisClass:"OBS", fshPrior:38, fshThis:48, gmtSinceLast:7.0, matchConf:95, change:"stable", probes:["70°CB"] },
+    { km:"00892-02-07", uic:"212-1.2", priorClass:"OBS", thisClass:"OBS", fshPrior:29, fshThis:38, gmtSinceLast:6.8, matchConf:92, change:"stable", probes:["70°CB"] },
+    { km:"00398-09-04", uic:"135-2.1", priorClass:"OBS", thisClass:"OBS", fshPrior:37, fshThis:46, gmtSinceLast:7.1, matchConf:93, change:"stable", probes:["37°CF"] },
+    { km:"01089-14-03", uic:"135-4.2", priorClass:"OBS", thisClass:"OBS", fshPrior:38, fshThis:46, gmtSinceLast:6.9, matchConf:91, change:"stable", probes:["37°CB"] },
+  ],
+  newDefects: [
+    { km:"00543-15-01", uic:"113-1.3", thisClass:"OBS", fshThis:48, probes:["70°GF"] },
+    { km:"00456-07-09", uic:"111-2.4", thisClass:"OBS", fshThis:53, probes:["70°GF"] },
+    { km:"00754-06-01", uic:"112-1.1", thisClass:"OBS", fshThis:38, probes:["70°CF"] },
+    { km:"00812-03-09", uic:"213-2.2", thisClass:"OBS", fshThis:34, probes:["70°CB"] },
+  ],
+  disappeared: [
+    { km:"00334-10-06", uic:"113-3.2", priorClass:"IMR", reason:null },
+    { km:"01008-11-06", uic:"112-2.3", priorClass:"OBS", reason:null },
+  ],
+};
+
+/* ─── HELPERS ────────────────────────────────────────────────────── */
+function clsStyle(cls) {
+  if (cls==="IMR"||cls==="IMRW") return { bg:"#FFF0F2", text:"#C8102E", border:"#C8102E" };
+  if (cls==="OBS"||cls==="OBSW") return { bg:"#FFF8E6", text:"#9A6600", border:"#E5A100" };
+  return { bg:"#F0FAF5", text:"#1F7A4D", border:"#1F7A4D" };
+}
+function ClassBadge({ cls }) {
+  const s = clsStyle(cls);
+  return <span className="badge" style={{ background:s.bg, color:s.text, border:`1px solid ${s.border}` }}>{cls}</span>;
+}
+function Field({ label, labelHi, children }) {
+  return (
+    <div className="field">
+      <label className="label">{label}{labelHi && <span className="label-hi">{labelHi}</span>}</label>
+      {children}
+    </div>
+  );
+}
+
+/* ─── PROGRESS BAR ──────────────────────────────────────────────── */
+function ProgressBar({ current }) {
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:0, marginBottom:"20px" }}>
+      {STEPS.map((s, i) => {
+        const done = i < current;
+        const active = i === current;
+        return (
+          <React.Fragment key={s}>
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:"4px" }}>
+              <div style={{
+                width:"30px", height:"30px", borderRadius:"50%",
+                display:"flex", alignItems:"center", justifyContent:"center",
+                background: done?"#0B1F3A": active?"#0B1F3A":"#FFFFFF",
+                border:`2px solid ${done||active?"#0B1F3A":"#D8DCE3"}`,
+                fontSize:"11px", fontWeight:700,
+                color: done||active?"#FFFFFF":"#8A95A3",
+              }}>
+                {done ? "✓" : i+1}
+              </div>
+              <span style={{ fontSize:"9.5px", fontWeight: active?700:400, color: active?"#0B1F3A":"#8A95A3", whiteSpace:"nowrap" }}>{s}</span>
+            </div>
+            {i < STEPS.length-1 && (
+              <div style={{ flex:1, height:"2px", background: i < current?"#0B1F3A":"#D8DCE3", margin:"0 4px", marginBottom:"18px" }} />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ─── PROBE CONDITION GRID ──────────────────────────────────────── */
+function ProbeGrid({ values, onChange }) {
+  return (
+    <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:"6px" }}>
+      {PROBES_9.map(p => (
+        <label key={p} style={{ display:"flex", alignItems:"center", gap:"6px", padding:"5px 8px", border:`1px solid ${values[p]==="working"?"#A0D8BC":"#F0B0B8"}`, borderRadius:"3px", background:values[p]==="working"?"#F0FAF5":"#FFF0F2", cursor:"pointer", fontSize:"10.5px" }}>
+          <input type="checkbox" checked={values[p]==="working"} onChange={e => onChange(p, e.target.checked?"working":"faulty")}
+            style={{ width:"13px", height:"13px", accentColor:"#0B1F3A" }} />
+          <span style={{ fontFamily:"var(--mono)", fontSize:"10px" }}>{p}</span>
+          <span style={{ marginLeft:"auto", fontSize:"9px", color:values[p]==="working"?"#1F7A4D":"#C8102E", fontWeight:600 }}>{values[p]==="working"?"OK":"FAULT"}</span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
+/* ─── STEP 1: UPLOAD ─────────────────────────────────────────────── */
+function StepUpload({ onNext }) {
+  const [dragging, setDragging] = useState(false);
+  const [file, setFile] = useState(null);
+  const [vendor, setVendor] = useState("ECIL");
+  const [probes, setProbes] = useState(Object.fromEntries(PROBES_9.map(p => [p,"working"])));
+  const [meta, setMeta] = useState({
+    runDate: "2026-04-24",
+    operator: "SE/JE K. Sharma",
+    rdsoTrainDate: "2023-08-15",
+    refresherDate: "2025-01-10",
+    machine: "DRT-MUM-02",
+    calibDate: "2026-04-20",
+    sensDate: "2026-04-24",
+    battYear: "2024",
+    audioAlarm: "sounding",
+  });
+
+  const selectedVendor = VENDORS.find(v => v.id === vendor);
+
+  function handleDrop(e) {
+    e.preventDefault(); setDragging(false);
+    const f = e.dataTransfer?.files?.[0];
+    if (f) setFile(f);
+  }
+  function handleFileInput(e) { if (e.target.files?.[0]) setFile(e.target.files[0]); }
+  function setMf(k, v) { setMeta(m => ({ ...m, [k]: v })); }
+  function setProbeVal(p, v) { setProbes(pr => ({ ...pr, [p]: v })); }
+
+  return (
+    <div>
+      <div style={{ fontSize:"13px", fontWeight:700, color:"#0B1F3A", marginBottom:"4px" }}>Step 1 — Upload USFD run export</div>
+      <div style={{ fontSize:"11px", color:"#8A95A3", marginBottom:"18px" }}>Drop the machine export file and complete the Annexure V run metadata.</div>
+
+      {/* Dropzone */}
+      <div
+        onDragOver={e => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={handleDrop}
+        style={{
+          border:`2px dashed ${dragging?"#0B1F3A":file?"#1F7A4D":"#C0C8D4"}`,
+          borderRadius:"6px", padding:"28px 20px", textAlign:"center",
+          background: dragging?"#EEF3FA":file?"#F0FAF5":"#FAFBFC",
+          marginBottom:"18px", cursor:"pointer", transition:"all 0.15s",
+        }}
+        onClick={() => document.getElementById("file-input").click()}
+      >
+        <input id="file-input" type="file" accept=".csv,.xml,.txt" style={{ display:"none" }} onChange={handleFileInput} />
+        {file ? (
+          <div>
+            <div style={{ fontSize:"15px", color:"#1F7A4D", fontWeight:700, marginBottom:"4px" }}>✓ {file.name}</div>
+            <div style={{ fontSize:"10.5px", color:"#8A95A3" }}>{(file.size/1024).toFixed(1)} KB · Click to replace</div>
+          </div>
+        ) : (
+          <div>
+            <div style={{ fontSize:"32px", color:"#C0C8D4", marginBottom:"8px" }}>↑</div>
+            <div style={{ fontSize:"13px", fontWeight:600, color:"#0B1F3A", marginBottom:"4px" }}>Drop USFD run export</div>
+            <div style={{ fontSize:"11px", color:"#8A95A3" }}>CSV / XML / vendor format · or click to browse</div>
+          </div>
+        )}
+      </div>
+
+      {/* Vendor selector */}
+      <Field label="Vendor / machine type" labelHi="विक्रेता">
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:"6px", marginBottom:"4px" }}>
+          {VENDORS.map(v => (
+            <label key={v.id} style={{
+              display:"flex", alignItems:"flex-start", gap:"8px", padding:"8px 10px",
+              border:`1px solid ${vendor===v.id?"#0B1F3A":"#D8DCE3"}`,
+              borderRadius:"4px", background: vendor===v.id?"#EEF3FA":"#FFFFFF",
+              cursor:"pointer",
+            }}>
+              <input type="radio" name="vendor" value={v.id} checked={vendor===v.id} onChange={()=>setVendor(v.id)} style={{ marginTop:"2px", accentColor:"#0B1F3A" }} />
+              <div>
+                <div style={{ fontSize:"12px", fontWeight:600, color:"#0B1F3A" }}>{v.label}</div>
+                <div style={{ fontSize:"9.5px", color:"#8A95A3", marginTop:"1px" }}>{v.desc}</div>
+              </div>
+            </label>
+          ))}
+        </div>
+      </Field>
+
+      {/* Run metadata — Annexure V fields */}
+      <div style={{ fontWeight:700, fontSize:"11px", color:"#506070", textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:"10px", marginTop:"4px" }}>
+        Annexure V — Run metadata <span style={{ fontWeight:400, fontSize:"9px", color:"#B0BACA" }}>अनुलग्नक V</span>
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0 16px" }}>
+        <Field label="Date of run" labelHi="दिनांक">
+          <input className="input" type="date" value={meta.runDate} onChange={e=>setMf("runDate",e.target.value)} />
+        </Field>
+        <Field label="Operator name" labelHi="चालक">
+          <input className="input" value={meta.operator} onChange={e=>setMf("operator",e.target.value)} list="operator-list" placeholder="SE/JE name" />
+          <datalist id="operator-list">{PRIOR_OPERATORS.map(o=><option key={o} value={o}/>)}</datalist>
+        </Field>
+        <Field label="RDSO training date">
+          <input className="input" type="date" value={meta.rdsoTrainDate} onChange={e=>setMf("rdsoTrainDate",e.target.value)} />
+        </Field>
+        <Field label="Last refresher date">
+          <input className="input" type="date" value={meta.refresherDate} onChange={e=>setMf("refresherDate",e.target.value)} />
+        </Field>
+        <Field label="Machine make / model / serial" labelHi="मशीन">
+          <input className="input mono" value={meta.machine} onChange={e=>setMf("machine",e.target.value)} list="machine-list" />
+          <datalist id="machine-list">{PRIOR_MACHINES.map(m=><option key={m} value={m}/>)}</datalist>
+        </Field>
+        <Field label="Calibration date">
+          <input className="input" type="date" value={meta.calibDate} onChange={e=>setMf("calibDate",e.target.value)} />
+        </Field>
+        <Field label="Sensitivity setting date">
+          <input className="input" type="date" value={meta.sensDate} onChange={e=>setMf("sensDate",e.target.value)} />
+        </Field>
+        <Field label="Battery procurement year">
+          <input className="input mono" value={meta.battYear} onChange={e=>setMf("battYear",e.target.value)} maxLength={4} />
+        </Field>
+      </div>
+
+      <Field label="Audio alarm">
+        <div style={{ display:"flex", gap:"8px" }}>
+          {["sounding","not-sounding"].map(v => (
+            <label key={v} style={{ display:"flex", alignItems:"center", gap:"6px", padding:"6px 12px", border:`1px solid ${meta.audioAlarm===v?"#0B1F3A":"#D8DCE3"}`, borderRadius:"3px", background:meta.audioAlarm===v?"#EEF3FA":"#FFFFFF", cursor:"pointer", fontSize:"11.5px" }}>
+              <input type="radio" name="audio" value={v} checked={meta.audioAlarm===v} onChange={()=>setMf("audioAlarm",v)} style={{ accentColor:"#0B1F3A" }} />
+              {v==="sounding"?"Sounding":"Not sounding"}
+            </label>
+          ))}
+        </div>
+      </Field>
+
+      <Field label="Probe condition — 9-probe check" labelHi="जांच स्थिति">
+        <ProbeGrid values={probes} onChange={setProbeVal} />
+        {Object.values(probes).some(v=>v==="faulty") && (
+          <div style={{ marginTop:"6px", padding:"6px 10px", background:"#FFF8E6", border:"1px solid #F0D890", borderRadius:"3px", fontSize:"10.5px", color:"#7A5800" }}>
+            Faulty probes will reduce detection coverage. Ensure this is noted in Annexure V and re-confirmed by AEN.
+          </div>
+        )}
+      </Field>
+
+      <div style={{ display:"flex", justifyContent:"flex-end", gap:"8px", marginTop:"8px" }}>
+        <button className="btn-primary" onClick={onNext} disabled={!file} style={{ opacity:file?1:0.5 }}>
+          Parse file →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── STEP 2: PARSE ──────────────────────────────────────────────── */
+function StepParse({ onNext, onBack }) {
+  const valid = MOCK_PARSED_ROWS.filter(r=>r.status==="valid").length;
+  const calibration = MOCK_PARSED_ROWS.filter(r=>r.status==="calibration").length;
+  const warnings = MOCK_PARSED_ROWS.filter(r=>r.warn).length;
+  const total = MOCK_PARSED_ROWS.length;
+
+  return (
+    <div>
+      <div style={{ fontSize:"13px", fontWeight:700, color:"#0B1F3A", marginBottom:"4px" }}>Step 2 — Parse results</div>
+      <div style={{ fontSize:"11px", color:"#8A95A3", marginBottom:"14px" }}>Auto-detected: <span style={{ fontFamily:"var(--mono)", color:"#0B1F3A" }}>ECIL DRT v4.1 CSV</span> · 342 rows total</div>
+
+      {/* Summary */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:"8px", marginBottom:"14px" }}>
+        {[
+          { label:"Total rows", value:"342", color:"#0B1F3A" },
+          { label:"Valid defects", value:"318", color:"#1F7A4D" },
+          { label:"Calibration markers", value:"24", color:"#506070" },
+          { label:"Parse warnings", value:warnings, color:warnings>0?"#A37000":"#1F7A4D" },
+        ].map((k,i) => (
+          <div key={i} style={{ padding:"8px 10px", background:"#FFFFFF", border:"1px solid #D8DCE3", borderRadius:"3px" }}>
+            <div style={{ fontSize:"9px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.06em" }}>{k.label}</div>
+            <div style={{ fontFamily:"var(--mono)", fontSize:"18px", fontWeight:700, color:k.color, marginTop:"2px" }}>{k.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Preview table */}
+      <div style={{ fontSize:"10px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:"6px" }}>
+        Showing first {MOCK_PARSED_ROWS.length} rows
+      </div>
+      <div style={{ overflowX:"auto", border:"1px solid #D8DCE3", borderRadius:"3px", marginBottom:"14px" }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"11px" }}>
+          <thead>
+            <tr style={{ background:"#F8F9FB" }}>
+              {["Row","KM & TP","UIC","Probe","%FSH","Rail","Status"].map(h=>(
+                <th key={h} style={{ padding:"6px 10px", textAlign:"left", fontSize:"9px", fontWeight:700, color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.06em", borderBottom:"2px solid #E0E4EA", whiteSpace:"nowrap" }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {MOCK_PARSED_ROWS.map((r,i) => {
+              const isCalib = r.status==="calibration";
+              const hasWarn = !!r.warn;
+              return (
+                <tr key={i} style={{ background: isCalib?"#F8F9FB": hasWarn?"#FFFBF0":"transparent", borderBottom:"1px solid #EEF0F3", opacity:isCalib?0.6:1 }}>
+                  <td style={{ padding:"4px 10px", fontFamily:"var(--mono)", fontSize:"10px", color:"#B0BACA" }}>{r.row}</td>
+                  <td style={{ padding:"4px 10px", fontFamily:"var(--mono)", fontSize:"10.5px", fontWeight:500, color:"#0B1F3A" }}>{r.km}</td>
+                  <td style={{ padding:"4px 10px", fontFamily:"var(--mono)", fontSize:"10.5px" }}>{r.uic}</td>
+                  <td style={{ padding:"4px 10px", fontFamily:"var(--mono)", fontSize:"10px" }}>{r.probe}</td>
+                  <td style={{ padding:"4px 10px", fontFamily:"var(--mono)", fontSize:"10.5px", color: r.fsh>=60?"#C8102E":r.fsh>=30?"#A37000":"#1A1A1A" }}>{r.fsh!=null?`${r.fsh}%`:"—"}</td>
+                  <td style={{ padding:"4px 10px", fontSize:"10.5px" }}>{r.rail}</td>
+                  <td style={{ padding:"4px 10px" }}>
+                    {isCalib
+                      ? <span style={{ fontSize:"9.5px", color:"#506070", background:"#F0F2F5", border:"1px solid #D8DCE3", borderRadius:"2px", padding:"1px 5px" }}>calibration</span>
+                      : hasWarn
+                      ? <span style={{ fontSize:"9.5px", color:"#A37000", background:"#FFF8E6", border:"1px solid #E5A100", borderRadius:"2px", padding:"1px 5px" }} title={r.warn}>⚠ warn</span>
+                      : <span style={{ fontSize:"9.5px", color:"#1F7A4D", background:"#F0FAF5", border:"1px solid #A0D8BC", borderRadius:"2px", padding:"1px 5px" }}>✓ valid</span>
+                    }
+                    {hasWarn && <div style={{ fontSize:"8.5px", color:"#8A95A3", marginTop:"1px" }}>{r.warn}</div>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+        <button className="btn-secondary" onClick={onBack}>← Back</button>
+        <button className="btn-primary" onClick={onNext}>Confirm mapping →</button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── STEP 3: MAP ────────────────────────────────────────────────── */
+function StepMap({ onNext, onBack }) {
+  const [overrides, setOverrides] = useState({});
+
+  return (
+    <div>
+      <div style={{ fontSize:"13px", fontWeight:700, color:"#0B1F3A", marginBottom:"4px" }}>Step 3 — Column mapping confirmation</div>
+      <div style={{ fontSize:"11px", color:"#8A95A3", marginBottom:"14px" }}>Annexure VI / VII field mapping. Auto-mapped columns are pre-filled — confirm or override.</div>
+
+      {/* Column mapping table */}
+      <div style={{ border:"1px solid #D8DCE3", borderRadius:"3px", overflowX:"auto", marginBottom:"16px" }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"11.5px" }}>
+          <thead>
+            <tr style={{ background:"#F8F9FB" }}>
+              {["Source column (file)","Canonical field (Annex VI/VII)","Auto-mapped","Notes"].map(h=>(
+                <th key={h} style={{ padding:"7px 12px", textAlign:"left", fontSize:"9px", fontWeight:700, color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.06em", borderBottom:"2px solid #E0E4EA" }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {COL_MAPPING.map((m, i) => (
+              <tr key={i} style={{ borderBottom:"1px solid #F0F0F0", background: m.auto?"transparent":"#FFFBF0" }}>
+                <td style={{ padding:"7px 12px", fontFamily:"var(--mono)", fontSize:"11px", fontWeight:500 }}>{m.src}</td>
+                <td style={{ padding:"7px 12px" }}>
+                  <select className="input" style={{ padding:"4px 8px", fontSize:"11px", width:"auto", minWidth:"160px" }} defaultValue={m.canonical}>
+                    <option>{m.canonical}</option>
+                    <option>KM & TP</option><option>UIC Code</option><option>Amplitude (%FSH)</option>
+                    <option>Detection probe</option><option>Classification</option><option>Rail (LH/RH)</option>
+                    <option>Run date</option><option>Machine serial</option><option>— Ignore —</option>
+                  </select>
+                </td>
+                <td style={{ padding:"7px 12px" }}>
+                  {m.auto
+                    ? <span style={{ fontSize:"10px", color:"#1F7A4D", fontWeight:600 }}>✓ Auto</span>
+                    : <span style={{ fontSize:"10px", color:"#A37000", fontWeight:600 }}>⚠ Review</span>}
+                </td>
+                <td style={{ padding:"7px 12px", fontSize:"10.5px", color:"#8A95A3" }}>{m.note}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Enum mapping */}
+      <div style={{ fontSize:"10px", color:"#506070", textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:"8px", fontWeight:700 }}>
+        Classification enum mapping
+      </div>
+      <div style={{ border:"1px solid #D8DCE3", borderRadius:"3px", overflowX:"auto", marginBottom:"16px" }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"11.5px" }}>
+          <thead>
+            <tr style={{ background:"#F8F9FB" }}>
+              {["Source value","Canonical","Confidence","Note"].map(h=>(
+                <th key={h} style={{ padding:"6px 12px", textAlign:"left", fontSize:"9px", fontWeight:700, color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.06em", borderBottom:"2px solid #E0E4EA" }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {ENUM_MAP.map((e, i) => (
+              <tr key={i} style={{ borderBottom:"1px solid #F0F0F0", background: e.confident?"transparent":"#FFFBF0" }}>
+                <td style={{ padding:"6px 12px", fontFamily:"var(--mono)", fontSize:"11px" }}>{e.src}</td>
+                <td style={{ padding:"6px 12px" }}>
+                  <select className="input" style={{ padding:"3px 8px", fontSize:"11px", width:"auto" }} defaultValue={e.canonical}>
+                    {["IMR","IMRW","OBS","OBSW","GCC","Monitor","DFWO","DFWR","DFWN"].map(v=><option key={v}>{v}</option>)}
+                  </select>
+                </td>
+                <td style={{ padding:"6px 12px" }}>
+                  {e.confident
+                    ? <span style={{ fontSize:"9.5px", color:"#1F7A4D", fontWeight:600 }}>High</span>
+                    : <span style={{ fontSize:"9.5px", color:"#A37000", fontWeight:600 }}>Review</span>}
+                </td>
+                <td style={{ padding:"6px 12px", fontSize:"10px", color:"#8A95A3" }}>{e.note||""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ display:"flex", justifyContent:"space-between" }}>
+        <button className="btn-secondary" onClick={onBack}>← Back</button>
+        <button className="btn-primary" onClick={onNext}>Run defect matching →</button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── STEP 4: MATCH ──────────────────────────────────────────────── */
+function StepMatch({ onNext, onBack }) {
+  const [disappearedReasons, setDisappearedReasons] = useState({});
+  const { matched, newDefects, disappeared } = MATCH_RESULTS;
+
+  function setReason(km, v) { setDisappearedReasons(r => ({...r,[km]:v})); }
+
+  return (
+    <div>
+      <div style={{ fontSize:"13px", fontWeight:700, color:"#0B1F3A", marginBottom:"4px" }}>Step 4 — Defect matching results</div>
+      <div style={{ fontSize:"11px", color:"#8A95A3", marginBottom:"14px" }}>Matched against prior run of 12 Apr 2026 · GMT +7.1 consumed since last run</div>
+
+      {/* Summary pills */}
+      <div style={{ display:"flex", gap:"8px", marginBottom:"16px", flexWrap:"wrap" }}>
+        {[
+          { label:`${matched.length} matched`, color:"#1F7A4D", bg:"#F0FAF5" },
+          { label:`${newDefects.length} new (first detection)`, color:"#3A5BC7", bg:"#F0F4FF" },
+          { label:`${disappeared.length} disappeared`, color:"#A37000", bg:"#FFF8E6" },
+          { label:`${matched.filter(d=>d.change==="escalation").length} escalations`, color:"#C8102E", bg:"#FFF0F2" },
+        ].map((p,i)=>(
+          <span key={i} style={{ padding:"4px 10px", background:p.bg, color:p.color, border:`1px solid ${p.color}40`, borderRadius:"3px", fontSize:"11px", fontWeight:600 }}>{p.label}</span>
+        ))}
+      </div>
+
+      {/* MATCHED */}
+      <div style={{ fontSize:"10px", color:"#506070", textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:"6px", fontWeight:700 }}>
+        Matched to existing defects ({matched.length})
+      </div>
+      <div style={{ border:"1px solid #D8DCE3", borderRadius:"3px", overflowX:"auto", marginBottom:"14px" }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"11px" }}>
+          <thead>
+            <tr style={{ background:"#F8F9FB" }}>
+              {["KM & TP","UIC","Prior class","This run","FSH Δ","GMT since","Match","Change"].map(h=>(
+                <th key={h} style={{ padding:"5px 10px", textAlign:"left", fontSize:"8.5px", fontWeight:700, color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.06em", borderBottom:"2px solid #E0E4EA", whiteSpace:"nowrap" }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {matched.map((d, i) => {
+              const isEsc = d.change==="escalation";
+              return (
+                <tr key={i} style={{ background:isEsc?"#FFF8F8":"transparent", borderBottom:"1px solid #EEF0F3" }}>
+                  <td style={{ padding:"5px 10px", fontFamily:"var(--mono)", fontSize:"10.5px", fontWeight:500, color:"#0B1F3A" }}>{d.km}</td>
+                  <td style={{ padding:"5px 10px", fontFamily:"var(--mono)", fontSize:"10.5px" }}>{d.uic}</td>
+                  <td style={{ padding:"5px 10px" }}><ClassBadge cls={d.priorClass} /></td>
+                  <td style={{ padding:"5px 10px" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:"3px" }}>
+                      {isEsc && <span style={{ color:"#C0C8D4", fontSize:"9px" }}>→</span>}
+                      <ClassBadge cls={d.thisClass} />
+                    </div>
+                  </td>
+                  <td style={{ padding:"5px 10px", fontFamily:"var(--mono)", fontSize:"10.5px", color: (d.fshThis-d.fshPrior)>10?"#C8102E":"#1A1A1A" }}>
+                    {d.fshPrior}% → {d.fshThis}%
+                  </td>
+                  <td style={{ padding:"5px 10px", fontFamily:"var(--mono)", fontSize:"10.5px" }}>{d.gmtSinceLast} GMT</td>
+                  <td style={{ padding:"5px 10px", fontFamily:"var(--mono)", fontSize:"10.5px", color: d.matchConf>=95?"#1F7A4D":"#A37000" }}>{d.matchConf}%</td>
+                  <td style={{ padding:"5px 10px" }}>
+                    {isEsc
+                      ? <span style={{ fontSize:"9.5px", color:"#C8102E", fontWeight:700 }}>OBS→IMR escalation</span>
+                      : <span style={{ fontSize:"9.5px", color:"#506070" }}>OBS stable</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* NEW */}
+      <div style={{ fontSize:"10px", color:"#3A5BC7", textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:"6px", fontWeight:700 }}>
+        New defects — first detection ({newDefects.length})
+      </div>
+      <div style={{ display:"flex", flexDirection:"column", gap:"5px", marginBottom:"14px" }}>
+        {newDefects.map((d, i) => (
+          <div key={i} style={{ padding:"7px 10px", background:"#F0F4FF", border:"1px solid #C0D0F0", borderRadius:"3px", display:"flex", gap:"12px", alignItems:"center", flexWrap:"wrap" }}>
+            <span style={{ fontFamily:"var(--mono)", fontSize:"11px", fontWeight:600, color:"#0B1F3A" }}>{d.km}</span>
+            <span style={{ fontFamily:"var(--mono)", fontSize:"10.5px", color:"#506070" }}>{d.uic}</span>
+            <ClassBadge cls={d.thisClass} />
+            <span style={{ fontFamily:"var(--mono)", fontSize:"10.5px", color:"#3A5BC7" }}>{d.fshThis}%FSH</span>
+            <span style={{ fontFamily:"var(--mono)", fontSize:"10px", color:"#8A95A3" }}>{d.probes[0]}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* DISAPPEARED */}
+      <div style={{ fontSize:"10px", color:"#A37000", textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:"6px", fontWeight:700 }}>
+        Disappeared — prior run, not detected this run ({disappeared.length})
+      </div>
+      <div style={{ display:"flex", flexDirection:"column", gap:"6px", marginBottom:"16px" }}>
+        {disappeared.map((d, i) => (
+          <div key={i} style={{ padding:"8px 10px", background:"#FFFBF0", border:"1px solid #F0D890", borderRadius:"3px", display:"flex", gap:"12px", alignItems:"center", flexWrap:"wrap" }}>
+            <span style={{ fontFamily:"var(--mono)", fontSize:"11px", fontWeight:600, color:"#0B1F3A" }}>{d.km}</span>
+            <span style={{ fontFamily:"var(--mono)", fontSize:"10.5px", color:"#506070" }}>{d.uic}</span>
+            <ClassBadge cls={d.priorClass} />
+            <select className="input" style={{ padding:"3px 8px", fontSize:"10.5px", width:"auto" }}
+              value={disappearedReasons[d.km]||""}
+              onChange={e => setReason(d.km, e.target.value)}>
+              <option value="">Select reason…</option>
+              <option value="replaced">Rail/weld replaced</option>
+              <option value="missed">Possibly missed — re-inspect</option>
+              <option value="false-prior">False detection in prior run</option>
+            </select>
+            {!disappearedReasons[d.km] && <span style={{ fontSize:"9.5px", color:"#A37000" }}>Reason required before commit</span>}
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display:"flex", justifyContent:"space-between" }}>
+        <button className="btn-secondary" onClick={onBack}>← Back</button>
+        <button className="btn-primary" onClick={onNext}
+          disabled={disappeared.some(d=>!disappearedReasons[d.km])}
+          style={{ opacity: disappeared.some(d=>!disappearedReasons[d.km])?0.5:1 }}>
+          Review and confirm →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── STEP 5: CONFIRM ────────────────────────────────────────────── */
+function StepConfirm({ onCommit }) {
+  const [role] = useState("AEN"); // prototype: AEN sees test-check
+  const [tcKmFrom, setTcKmFrom] = useState("00482");
+  const [tcKmTo, setTcKmTo] = useState("00920");
+  const [tcAllConfirmed, setTcAllConfirmed] = useState(null);
+  const [tcExtra, setTcExtra] = useState(0);
+  const [committed, setCommitted] = useState(false);
+
+  function handleCommit() {
+    setCommitted(true);
+    setTimeout(() => onCommit(), 1800);
+  }
+
+  if (committed) return (
+    <div style={{ textAlign:"center", padding:"40px 20px" }}>
+      <div style={{ fontSize:"40px", color:"#1F7A4D", marginBottom:"12px" }}>✓</div>
+      <div style={{ fontSize:"16px", fontWeight:700, color:"#0B1F3A", marginBottom:"6px" }}>Run committed</div>
+      <div style={{ fontSize:"11.5px", color:"#8A95A3" }}>Priority Queue updated. Redirecting…</div>
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{ fontSize:"13px", fontWeight:700, color:"#0B1F3A", marginBottom:"4px" }}>Step 5 — Confirm and commit</div>
+      <div style={{ fontSize:"11px", color:"#8A95A3", marginBottom:"16px" }}>Review the impact summary before writing to history.</div>
+
+      {/* Impact summary */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"8px", marginBottom:"16px" }}>
+        {[
+          { label:"Matched", value:"8", sub:"defects updated", color:"#1F7A4D" },
+          { label:"New detections", value:"4", sub:"first-time defects", color:"#3A5BC7" },
+          { label:"Resolved", value:"2", sub:"marked disappeared", color:"#506070" },
+          { label:"Escalations", value:"2", sub:"OBS→IMR this run", color:"#C8102E" },
+          { label:"New clusters", value:"0", sub:"4 m rule triggers", color:"#FF7A1A" },
+          { label:"Queue impact", value:"+14", sub:"to Predicted-Escalate", color:"#E5A100" },
+        ].map((k,i)=>(
+          <div key={i} style={{ padding:"9px 10px", background:"#FFFFFF", border:"1px solid #D8DCE3", borderRadius:"3px", borderTop:`3px solid ${k.color}` }}>
+            <div style={{ fontSize:"9px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.06em" }}>{k.label}</div>
+            <div style={{ fontFamily:"var(--mono)", fontSize:"18px", fontWeight:700, color:k.color, marginTop:"2px" }}>{k.value}</div>
+            <div style={{ fontSize:"9.5px", color:"#8A95A3" }}>{k.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Annexure V checklist summary */}
+      <div style={{ marginBottom:"14px", padding:"10px 12px", background:"#F8F9FB", border:"1px solid #E5E5E5", borderRadius:"3px" }}>
+        <div style={{ fontSize:"10px", color:"#506070", textTransform:"uppercase", letterSpacing:"0.07em", fontWeight:700, marginBottom:"8px" }}>Annexure V checklist summary</div>
+        {[
+          ["Run date","24 Apr 2026"],["Operator","SE/JE K. Sharma"],["Machine","DRT-MUM-02"],
+          ["Calibration date","20 Apr 2026"],["Audio alarm","Sounding"],["All 9 probes","Working"],
+        ].map(([k,v])=>(
+          <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"3px 0", borderBottom:"1px solid #F0F0F0", fontSize:"10.5px" }}>
+            <span style={{ color:"#8A95A3" }}>{k}</span>
+            <span style={{ fontFamily:"var(--mono)", fontWeight:500 }}>{v}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* AEN test-check */}
+      {role === "AEN" && (
+        <div style={{ marginBottom:"14px", padding:"10px 12px", background:"#EEF3FA", border:"1px solid #B0C8E8", borderRadius:"3px" }}>
+          <div style={{ fontSize:"10px", color:"#0B1F3A", textTransform:"uppercase", letterSpacing:"0.07em", fontWeight:700, marginBottom:"10px" }}>
+            AEN Test-check — Annexure V Para 4.3
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0 16px" }}>
+            <Field label="Test-check from KM">
+              <input className="input mono" value={tcKmFrom} onChange={e=>setTcKmFrom(e.target.value)} placeholder="e.g. 00482" />
+            </Field>
+            <Field label="Test-check to KM">
+              <input className="input mono" value={tcKmTo} onChange={e=>setTcKmTo(e.target.value)} placeholder="e.g. 00920" />
+            </Field>
+          </div>
+          <Field label="Classification confirmed for all markings?">
+            <div style={{ display:"flex", gap:"8px" }}>
+              {[{v:"yes",l:"Yes — all confirmed"},{v:"no",l:"No — disputes raised"}].map(o=>(
+                <label key={o.v} style={{ display:"flex", alignItems:"center", gap:"6px", padding:"6px 12px", border:`1px solid ${tcAllConfirmed===o.v?"#0B1F3A":"#D8DCE3"}`, borderRadius:"3px", background:tcAllConfirmed===o.v?"#FFFFFF":"#F8F9FB", cursor:"pointer", fontSize:"11px" }}>
+                  <input type="radio" name="tc" value={o.v} checked={tcAllConfirmed===o.v} onChange={()=>setTcAllConfirmed(o.v)} style={{ accentColor:"#0B1F3A" }} />
+                  {o.l}
+                </label>
+              ))}
+            </div>
+          </Field>
+          <Field label="Extra defects found (count)">
+            <input className="input" type="number" min="0" value={tcExtra} onChange={e=>setTcExtra(e.target.value)} style={{ width:"80px" }} />
+          </Field>
+        </div>
+      )}
+
+      {/* Confirm button */}
+      <div style={{ padding:"12px", background:"#FFF8F8", border:"1px solid #F0B0B8", borderRadius:"3px", marginBottom:"12px", fontSize:"11px", color:"#8A0020" }}>
+        <strong>This action cannot be undone.</strong> Committing will write all matched, new and resolved defects to the permanent inspection history and update the Priority Queue.
+      </div>
+
+      <div style={{ display:"flex", justifyContent:"space-between" }}>
+        <button className="btn-secondary" onClick={() => {}}>← Back</button>
+        <button onClick={handleCommit} style={{
+          padding:"10px 24px", fontSize:"13px", fontWeight:700,
+          background:"#C8102E", color:"#FFFFFF", border:"none", borderRadius:"3px", cursor:"pointer",
+        }}>
+          Commit run to history
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── MAIN APP ──────────────────────────────────────────────────── */
+function App() {
+  const [step, setStep] = useState(0);
+  const [offline, setOffline] = useState(false);
+
+  // Persist step to localStorage
+  useEffect(() => {
+    const saved = parseInt(localStorage.getItem("pmt_import_step") || "0");
+    if (saved > 0 && saved < 5) setStep(saved);
+  }, []);
+  useEffect(() => {
+    localStorage.setItem("pmt_import_step", String(step));
+  }, [step]);
+
+  // Offline detection
+  useEffect(() => {
+    const on = () => setOffline(false);
+    const off = () => setOffline(true);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    setOffline(!navigator.onLine);
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
+  }, []);
+
+  const stepContent = [
+    <StepUpload key={0} onNext={() => setStep(1)} />,
+    <StepParse key={1} onNext={() => setStep(2)} onBack={() => setStep(0)} />,
+    <StepMap key={2} onNext={() => setStep(3)} onBack={() => setStep(1)} />,
+    <StepMatch key={3} onNext={() => setStep(4)} onBack={() => setStep(2)} />,
+    <StepConfirm key={4} onCommit={() => { localStorage.removeItem("pmt_import_step"); window.location.href = "Priority Queue.html"; }} />,
+  ];
+
+  return (
+    <div style={{ display:"flex", height:"100vh", background:"#F0F2F5", overflow:"hidden" }}>
+
+      {/* LEFT NAV */}
+      <nav style={{ width:"52px", flexShrink:0, background:"#0B1F3A", display:"flex", flexDirection:"column", alignItems:"center", gap:"2px" }}>
+        <div style={{ width:"52px", height:"52px", background:"#132D52", display:"flex", alignItems:"center", justifyContent:"center", borderBottom:"1px solid #1C3F6E", flexShrink:0 }}>
+          <img src="assets/aonami-white.png" alt="Aonami" style={{ width:"34px", height:"34px", objectFit:"contain", display:"block" }} />
+        </div>
+        {[{icon:"≡",label:"Queue"},{icon:"◈",label:"Map"},{icon:"∿",label:"Defect"},{icon:"⊞",label:"Cluster"},{icon:"↑",label:"Import",active:true},{icon:"□",label:"Annex"},{icon:"⊙",label:"Zone"}].map(({icon,label,active})=>(
+          <div key={label} title={label} style={{ width:"44px", height:"44px", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:"2px", background:active?"#1C3F6E":"transparent", borderRadius:"4px", cursor:"pointer", borderLeft:active?"2px solid #FF7A1A":"2px solid transparent" }}>
+            <span style={{ fontSize:"15px", color:active?"#FFFFFF":"#6B8BB0", lineHeight:1 }}>{icon}</span>
+            <span style={{ fontSize:"7.5px", color:active?"#FFFFFF":"#4A6480", letterSpacing:"0.05em", textTransform:"uppercase" }}>{label}</span>
+          </div>
+        ))}
+        <div style={{ marginTop:"auto", marginBottom:"8px" }}>
+          <div style={{ width:"28px", height:"28px", background:"#1C3F6E", borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"10px", fontWeight:700, color:"#FFFFFF" }}>RS</div>
+        </div>
+      </nav>
+
+      {/* MAIN */}
+      <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", minWidth:0 }}>
+
+        {/* OFFLINE BANNER */}
+        {offline && (
+          <div style={{ background:"#FFF8E6", borderBottom:"2px solid #E5A100", padding:"7px 18px", fontSize:"11px", fontWeight:600, color:"#7A5800", display:"flex", alignItems:"center", gap:"8px", flexShrink:0 }}>
+            ⚠ Offline — progress saved locally. Will sync when connection returns.
+          </div>
+        )}
+
+        {/* TOP BAR */}
+        <header style={{ height:"48px", background:"#FFFFFF", borderBottom:"1px solid #D8DCE3", display:"flex", alignItems:"center", padding:"0 18px", gap:"10px", flexShrink:0 }}>
+          <div>
+            <div style={{ fontSize:"13px", fontWeight:700, color:"#0B1F3A" }}>Aonami Echo</div>
+            <div style={{ fontSize:"9px", color:"#8A95A3" }}>एको</div>
+          </div>
+          <div style={{ width:"1px", height:"24px", background:"#E5E5E5" }} />
+          <div style={{ display:"flex", alignItems:"center", gap:"5px", fontSize:"11.5px" }}>
+            <a href="Priority Queue.html" style={{ color:"#8A95A3", textDecoration:"none" }}>Priority Queue</a>
+            <span style={{ color:"#C0C8D4" }}>›</span>
+            <span style={{ color:"#0B1F3A", fontWeight:600 }}>Inspection Run Import</span>
+            <span style={{ color:"#C0C8D4" }}>›</span>
+            <span style={{ fontSize:"10.5px", color:"#8A95A3" }}>Step {step+1} of 5 — {STEPS[step]}</span>
+          </div>
+          <div style={{ marginLeft:"auto", display:"flex", gap:"8px", alignItems:"center" }}>
+            <img src="assets/ir-emblem.svg" alt="IR" style={{ width:"24px", height:"24px", objectFit:"contain", opacity:0.8 }} />
+          </div>
+        </header>
+
+        {/* WIZARD BODY */}
+        <div style={{ flex:1, overflowY:"auto", padding:"20px 24px" }}>
+          <div style={{ maxWidth:"860px", margin:"0 auto" }}>
+            <ProgressBar current={step} />
+            <div style={{ background:"#FFFFFF", border:"1px solid #D8DCE3", borderRadius:"4px", padding:"22px 24px" }}>
+              {stepContent[step]}
+            </div>
+          </div>
+        </div>
+
+        {/* FOOTER */}
+        <div style={{ padding:"6px 18px", borderTop:"1px solid #E5E5E5", background:"#F8F9FB", display:"flex", justifyContent:"space-between", alignItems:"center", flexShrink:0 }}>
+          <span style={{ fontSize:"9px", color:"#B0BACA" }}>© Government of India · Ministry of Railways · Indian Railways</span>
+          <span style={{ fontSize:"9px", color:"#B0BACA" }}>Progress auto-saved locally</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+<script src="prototype-nav.js"></script>
+</body>
+</html>

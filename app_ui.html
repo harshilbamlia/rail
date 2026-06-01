@@ -1,0 +1,269 @@
+<!doctype html><html lang=en><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>Aonami Echo · USFD Defect Triage</title>
+<style>
+:root{--bg:#0d1117;--card:#161b22;--ink:#e6edf3;--mut:#8b98a9;--line:#272e38;
+--imm:#e5484d;--urg:#f5a524;--mon:#3e9dd6;--rou:#3fb950;--acc:#58a6ff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
+font:14px/1.55 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+a{color:inherit;text-decoration:none}
+header{display:flex;align-items:center;gap:20px;padding:13px 22px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+.logo{font-weight:700;font-size:16px;letter-spacing:.3px}
+.logo small{color:var(--mut);font-weight:400;font-size:11.5px;margin-left:6px}
+nav{display:flex;gap:4px;margin-left:8px}
+nav a{padding:6px 12px;border-radius:7px;color:var(--mut);font-size:13px}
+nav a.on{background:var(--card);color:var(--ink)}
+.wrap{padding:20px 22px;max-width:1280px;margin:0 auto}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:11px;margin-bottom:18px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 15px}
+.kpi .v{font-size:24px;font-weight:700}.kpi .l{color:var(--mut);font-size:11.5px;margin-top:2px}
+.kpi.alert .v{color:var(--imm)}.kpi.warn .v{color:var(--urg)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+.card h2{margin:0 0 12px;font-size:14px;font-weight:600}
+.row-flex{display:flex;gap:16px;flex-wrap:wrap}
+.row-flex>*{flex:1;min-width:280px}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--mut);font-weight:600;position:sticky;top:0;background:var(--card)}
+tbody tr{cursor:pointer}tbody tr:hover{background:#1c2230}
+.tbl-wrap{max-height:62vh;overflow:auto;border:1px solid var(--line);border-radius:10px}
+.pill{padding:1px 8px;border-radius:20px;font-size:11px;font-weight:600}
+.IMMEDIATE{background:rgba(229,72,77,.18);color:var(--imm)}
+.URGENT{background:rgba(245,165,36,.18);color:var(--urg)}
+.MONITOR{background:rgba(62,157,214,.18);color:var(--mon)}
+.ROUTINE{background:rgba(63,185,80,.16);color:var(--rou)}
+.amp{font-weight:700}.amp.hi{color:var(--imm)}.amp.md{color:var(--urg)}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%}
+select,input{background:#0c0f14;color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:6px 9px;font-size:13px}
+.controls{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.back{color:var(--acc);font-size:13px;cursor:pointer}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-size:13px}
+.kv b{color:var(--mut);font-weight:500}
+.bar{display:flex;align-items:center;gap:8px;margin:5px 0}
+.bar .lab{width:140px;color:var(--mut);font-size:12px;text-align:right;flex:none}
+.bar .track{flex:1;background:#0c0f14;border-radius:5px;height:16px;overflow:hidden}
+.bar .fill{height:100%}.bar .num{width:42px;font-size:12px;text-align:right}
+.note{color:var(--mut);font-size:11.5px;margin-top:10px}
+.tag{font-size:11px;color:var(--mut)}
+</style></head><body>
+<header>
+<div class=logo>Aonami Echo<small>USFD run-on-run defect triage</small></div>
+<nav id=nav>
+<a href="#/queue">Priority Queue</a>
+<a href="#/map">Track Map</a>
+<a href="#/zones">Zone Rollup</a>
+<a href="#/model">Model</a>
+</nav>
+</header>
+<div class=wrap id=app></div>
+<script>
+const API='';
+const $=(h)=>{const d=document.createElement('div');d.innerHTML=h;return d.firstElementChild};
+const app=document.getElementById('app');
+const f=(u)=>fetch(API+u).then(r=>r.json());
+const ampcls=a=>a>=80?'hi':a>=60?'md':'';
+const sevcol=a=>a>=80?'var(--imm)':a>=60?'var(--urg)':a>=30?'var(--mon)':'var(--rou)';
+const esc=s=>String(s==null?'':s);
+
+function sparkline(arr,w=70,h=20){
+ if(!arr||arr.length<2)return `<svg width=${w} height=${h}></svg>`;
+ const mn=0,mx=100,n=arr.length;
+ const pts=arr.map((v,i)=>`${(i/(n-1))*w},${h-(v-mn)/(mx-mn)*h}`).join(' ');
+ const up=arr[arr.length-1]>=arr[0];
+ return `<svg width=${w} height=${h}><polyline points="${pts}" fill=none stroke="${up?'var(--imm)':'var(--rou)'}" stroke-width=1.5/></svg>`;
+}
+
+/* ---------------- Priority Queue ---------------- */
+async function viewQueue(){
+ setNav('#/queue');
+ const st=await f('/api/stats');
+ const bl=st.by_level||{};
+ app.innerHTML=`<div class=kpis>
+  ${kpi(st.defects,'Defects tracked')}${kpi(bl.IMMEDIATE||0,'IMMEDIATE','alert')}
+  ${kpi(bl.URGENT||0,'URGENT','warn')}${kpi(st.near_imr,'Near-IMR (&ge;80%)','alert')}
+  ${kpi(st.clusters,'4m clusters')}${kpi(st.sla_breaches,'SLA breaches','alert')}</div>
+  <div class=card><h2>Priority Queue — which defects need attention today</h2>
+  <div class=controls>
+   <label class=tag>Level <select id=flvl>
+     <option value="">all</option><option>IMMEDIATE</option><option>URGENT</option>
+     <option>MONITOR</option><option>ROUTINE</option></select></label>
+   <input id=frail placeholder="filter railway…" size=16>
+   <span class=tag id=qcount></span></div>
+  <div class=tbl-wrap><table id=qt></table></div>
+  <div class=note>Rows ranked by RDSO triage (severity + Para 6.3.2 clusters + predicted RUL). Click a row for the defect's growth detail.</div>
+  </div>`;
+ const load=async()=>{
+   const lv=document.getElementById('flvl').value;
+   const rw=document.getElementById('frail').value;
+   const q=await f(`/api/queue?limit=300${lv?'&level='+lv:''}${rw?'&railway='+encodeURIComponent(rw):''}`);
+   document.getElementById('qcount').textContent=q.length+' shown';
+   document.getElementById('qt').innerHTML=
+    '<tr><th>#<th>Level<th>Railway<th>Section<th>Km+m<th>Rail<th>%FSH<th>trend<th>yrs&rarr;80<th>Reasons</tr>'+
+    q.map(r=>`<tr onclick="location.hash='#/defect?key='+encodeURIComponent('${jsesc(r.defect_key)}')">
+     <td>${r.triage_rank}<td><span class="pill ${r.triage_level}">${r.triage_level}</span>
+     <td>${esc(r.railway).replace(' Railway','')}<td>${esc(r.section)}<td>${r.km}+${r.meter}
+     <td>${esc(r.rail)}<td class="amp ${ampcls(r.latest_amp)}">${Math.round(r.latest_amp)}
+     <td>${sparkline(r.spark)}<td>${fmtY(r.yrs_to_80,r.latest_amp)}<td class=tag>${esc(r.reasons)}</tr>`).join('');
+ };
+ document.getElementById('flvl').onchange=load;
+ document.getElementById('frail').oninput=()=>{clearTimeout(window._t);window._t=setTimeout(load,300)};
+ load();
+}
+function fmtY(y,amp){if(amp>=80)return '<span style="color:var(--imm)">breached</span>';
+ if(y==null||y>=1e8)return '—';return y.toFixed(1)+'y';}
+
+/* ---------------- Defect Detail + growth chart ---------------- */
+async function viewDefect(key){
+ setNav('');
+ const [g,d,pr]=await Promise.all([
+  f('/api/defect_growth?key='+encodeURIComponent(key)),
+  f('/api/defect?key='+encodeURIComponent(key)),
+  f('/api/predict?key='+encodeURIComponent(key)).catch(()=>null)]);
+ const p=d.prediction,t=d.triage||{};
+ app.innerHTML=`<div class=back onclick="history.back()">&larr; back to queue</div>
+  <div class=row-flex style="margin-top:10px">
+   <div class=card style="flex:1.3"><h2>${esc(g.section)} · KM ${g.km}+${g.meter} · ${esc(g.rail)} · ${esc(g.asset_type)}</h2>
+     ${growthChart(g)}
+     <div class=note>Points = measured %FSH per inspection. Dashed = projected trajectory to the 80% (IMR) line using the defect's growth rate. Horizontal lines = RDSO 30/60/80% thresholds.</div>
+   </div>
+   <div class=card style="flex:.7"><h2>Identity & prediction</h2>
+     <div class=kv>
+       <b>Railway</b><span>${esc(g.railway)}</span>
+       <b>Section</b><span>${esc(g.section)}</span>
+       <b>Location</b><span>KM ${g.km} + ${g.meter} (${esc(g.rail)})</span>
+       <b>Asset</b><span>${esc(g.asset_type)}</span>
+       <b>Latest %FSH</b><span class="amp ${ampcls(g.latest_amp)}">${Math.round(g.latest_amp)}</span>
+       <b>Triage</b><span><span class="pill ${t.triage_level||''}">${t.triage_level||'—'}</span></span>
+       <b>Predicted IMR</b><span>${g.predicted_imr_date||(g.latest_amp>=80?'already ≥80%':'stable')}</span>
+       <b>yrs → 80%</b><span>${fmtY(g.yrs_to_80,g.latest_amp)}</span>
+       <b>Cluster (Para 6.3.2)</b><span>${t.para632_escalate?('yes #'+t.cluster_id):'no'}</span>
+       <b>SLA breach</b><span>${t.sla_breach?'<span style="color:var(--imm)">yes</span>':'no'}</span>
+       ${pr?`<b>Model next %FSH</b><span>${pr.predicted_next_amp} <span class=tag>(persistence ${pr.persistence_baseline})</span></span>`:''}
+     </div></div>
+  </div>
+  <div class=card><h2>Inspection history</h2><div class=tbl-wrap><table>
+   <tr><th>Round<th>Date<th>Classification<th>Probe<th>%FSH<th>GMT</tr>
+   ${d.inspection_history.map(h=>`<tr style=cursor:default><td>${esc(h.round_label)}<td>${esc(h.inspection_date)}
+     <td>${esc(h.classification)}<td>${esc(h.probe)}<td class="amp ${ampcls(h.amplitude_pct)}">${h.amplitude_pct==null?'—':Math.round(h.amplitude_pct)}
+     <td>${h.gmt_at_round==null?'—':Math.round(h.gmt_at_round)}</tr>`).join('')}
+   </table></div></div>`;
+}
+function growthChart(g){
+ const W=560,H=300,m={l:38,r:14,t:14,b:30};
+ const iw=W-m.l-m.r,ih=H-m.t-m.b;
+ const all=[...g.points,...g.projection].filter(p=>p.date);
+ if(!all.length)return '<div class=note>No amplitude history.</div>';
+ const ts=all.map(p=>+new Date(p.date.split('/').reverse().join('-')||p.date));
+ const t0=Math.min(...ts),t1=Math.max(...ts)||t0+1;
+ const X=t=>m.l+( (t-t0)/((t1-t0)||1) )*iw;
+ const Y=a=>m.t+(1-a/100)*ih;
+ const px=p=>X(+new Date(p.date.split('/').reverse().join('-')||p.date));
+ let s='';
+ // threshold lines
+ [[30,'#3e9dd6'],[60,'#f5a524'],[80,'#e5484d']].forEach(([v,c])=>{
+   s+=`<line x1=${m.l} y1=${Y(v)} x2=${W-m.r} y2=${Y(v)} stroke="${c}" stroke-dasharray="4 4" opacity=.5/>`;
+   s+=`<text x=${W-m.r} y=${Y(v)-3} fill="${c}" font-size=10 text-anchor=end>${v}% FSH</text>`;});
+ // axes
+ s+=`<line x1=${m.l} y1=${m.t} x2=${m.l} y2=${H-m.b} stroke=#39414d/>`;
+ s+=`<line x1=${m.l} y1=${H-m.b} x2=${W-m.r} y2=${H-m.b} stroke=#39414d/>`;
+ [0,50,100].forEach(v=>{s+=`<text x=${m.l-6} y=${Y(v)+3} fill=#8b98a9 font-size=10 text-anchor=end>${v}</text>`});
+ // projection (dashed)
+ if(g.projection.length>1){
+   const pts=g.projection.map(p=>`${px(p)},${Y(p.amp)}`).join(' ');
+   s+=`<polyline points="${pts}" fill=none stroke=#f5a524 stroke-width=2 stroke-dasharray="6 4"/>`;}
+ // history line + points
+ if(g.points.length>1){
+   const pts=g.points.map(p=>`${px(p)},${Y(p.amp)}`).join(' ');
+   s+=`<polyline points="${pts}" fill=none stroke=#58a6ff stroke-width=2/>`;}
+ g.points.forEach(p=>{s+=`<circle cx=${px(p)} cy=${Y(p.amp)} r=4 fill="${sevcol(p.amp)}" stroke=#0d1117/>`;
+   s+=`<text x=${px(p)} y=${Y(p.amp)-8} fill=#e6edf3 font-size=10 text-anchor=middle>${Math.round(p.amp)}</text>`;});
+ // date labels (first/last)
+ const ds=[...new Set(all.map(p=>p.date))];
+ s+=`<text x=${m.l} y=${H-8} fill=#8b98a9 font-size=10>${ds[0]}</text>`;
+ s+=`<text x=${W-m.r} y=${H-8} fill=#8b98a9 font-size=10 text-anchor=end>${g.predicted_imr_date||ds[ds.length-1]}</text>`;
+ return `<svg width=100% viewBox="0 0 ${W} ${H}" style="max-width:${W}px">${s}</svg>`;
+}
+
+/* ---------------- Track Map ---------------- */
+async function viewMap(){
+ setNav('#/map');
+ const secs=await f('/api/sections');
+ const opts=secs.map((s,i)=>`<option value="${i}">${esc(s.railway).replace(' Railway','')} · ${esc(s.section)} (${s.n}, ${s.near_imr} near-IMR)</option>`).join('');
+ app.innerHTML=`<div class=card><h2>Track Map — defects by chainage, clusters highlighted</h2>
+  <div class=controls><label class=tag>Section <select id=sec>${opts}</select></label></div>
+  <div id=mapbox></div>
+  <div class=note>Each mark = a defect at its chainage; colour = severity (green&lt;30, blue, amber, red&ge;80). Amber bands = Para 6.3.2 four-metre clusters. Click a mark for detail.</div></div>`;
+ const draw=async()=>{
+   const s=secs[document.getElementById('sec').value];
+   const d=await f(`/api/trackmap?railway=${encodeURIComponent(s.railway)}&section=${encodeURIComponent(s.section)}`);
+   document.getElementById('mapbox').innerHTML=trackSVG(d);
+ };
+ document.getElementById('sec').onchange=draw; draw();
+}
+function trackSVG(d){
+ const defs=d.defects.filter(x=>x.chainage_m!=null);
+ if(!defs.length)return '<div class=note>No located defects.</div>';
+ const W=1180,H=120,m={l:10,r:10,t:40,b:24};
+ const xs=defs.map(x=>x.chainage_m);const x0=Math.min(...xs),x1=Math.max(...xs)||x0+1;
+ const X=c=>m.l+((c-x0)/((x1-x0)||1))*(W-m.l-m.r);
+ let s=`<line x1=${m.l} y1=${H/2} x2=${W-m.r} y2=${H/2} stroke=#39414d stroke-width=3/>`;
+ (d.clusters||[]).forEach(c=>{const a=X(c.chainage_start_m),b=X(c.chainage_end_m);
+   s+=`<rect x=${a-3} y=${H/2-18} width=${Math.max(6,b-a+6)} height=36 fill=rgba(245,165,36,.18) stroke=#f5a524 rx=4/>`;});
+ defs.forEach(x=>{const cx=X(x.chainage_m),up=x.rail==='L'||x.rail==='LR';const cy=H/2+(up?-14:14);
+   s+=`<circle cx=${cx} cy=${cy} r=5 fill="${sevcol(x.latest_amp)}" stroke=#0d1117 style=cursor:pointer
+        onclick="location.hash='#/defect?key='+encodeURIComponent('${jsesc(x.defect_key)}')"><title>KM ${x.km}+${x.meter} ${x.rail} ${Math.round(x.latest_amp)}%FSH</title></circle>`;});
+ s+=`<text x=${m.l} y=${H-6} fill=#8b98a9 font-size=10>KM ${(x0/1000).toFixed(2)}</text>`;
+ s+=`<text x=${W-m.r} y=${H-6} fill=#8b98a9 font-size=10 text-anchor=end>KM ${(x1/1000).toFixed(2)}</text>`;
+ s+=`<text x=${W/2} y=18 fill=#8b98a9 font-size=11 text-anchor=middle>${defs.length} defects · ${(d.clusters||[]).length} clusters · ▲ left rail / ▼ right rail</text>`;
+ return `<svg width=100% viewBox="0 0 ${W} ${H}">${s}</svg>`;
+}
+
+/* ---------------- Zone Rollup ---------------- */
+async function viewZones(){
+ setNav('#/zones');
+ const z=await f('/api/zones');
+ const mx=Math.max(1,...z.map(r=>r.defects));
+ app.innerHTML=`<div class=card><h2>Zone Rollup — condition by railway (for PCE / Sr DEN)</h2>
+  <div class=tbl-wrap><table>
+   <tr><th>Railway<th>Defects<th>Near-IMR<th>IMMEDIATE<th>SLA breach<th>avg %FSH<th></tr>
+   ${z.map(r=>`<tr style=cursor:default><td>${esc(r.railway).replace(' Railway','')}<td>${r.defects}
+     <td style="color:var(--imm)">${r.near_imr}<td>${r.immediate}<td>${r.sla_breach}<td>${r.avg_amp}
+     <td style=width:30%><div class=track style="background:#0c0f14;border-radius:5px;height:14px">
+       <div style="height:100%;width:${100*r.defects/mx}%;background:var(--acc);border-radius:5px"></div></div></tr>`).join('')}
+  </table></div></div>`;
+}
+
+/* ---------------- Model ---------------- */
+async function viewModel(){
+ setNav('#/model');
+ const m=await f('/api/model');
+ app.innerHTML=`<div class=card><h2>Prediction model — honest scorecard</h2>
+  <div class=kv>
+   <b>Target (output)</b><span>${esc(m.target)}</span>
+   <b>Features</b><span>${[...m.features_numeric,...m.features_categorical].join(', ')}</span>
+   <b>Training transitions</b><span>${m.n_training_transitions} (${m.n_defects} defects)</span>
+   <b>Validation</b><span>${esc(m.cv)}</span>
+   <b>Model MAE / R²</b><span>${m.model_mae} %FSH / ${m.model_r2}</span>
+   <b>Persistence MAE / R²</b><span>${m.persistence_mae} %FSH / ${m.persistence_r2}</span>
+   <b>Beats persistence?</b><span style="color:${m.beats_persistence_on_mae?'var(--rou)':'var(--imm)'}">${m.beats_persistence_on_mae?'yes':'no — persistence is the stronger baseline'}</span>
+  </div>
+  <div class=note>${esc(m.note)} With ≤3 noisy readings per defect, the model's value is ranking, not precise per-defect forecasting.</div></div>`;
+}
+
+/* ---------------- router ---------------- */
+function jsesc(s){return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
+function kpi(v,l,c){return `<div class="kpi ${c||''}"><div class=v>${(v||0).toLocaleString()}</div><div class=l>${l}</div></div>`}
+function setNav(h){document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')===h))}
+function route(){
+ const h=location.hash||'#/queue';
+ try{
+  if(h.startsWith('#/defect'))return viewDefect(decodeURIComponent(h.split('key=')[1]||''));
+  if(h.startsWith('#/map'))return viewMap();
+  if(h.startsWith('#/zones'))return viewZones();
+  if(h.startsWith('#/model'))return viewModel();
+  return viewQueue();
+ }catch(e){app.innerHTML='<div class=card>Error: '+e.message+'</div>'}
+}
+window.addEventListener('hashchange',route);
+route();
+</script></body></html>

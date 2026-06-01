@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Aonami Echo — Track Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: 'IBM Plex Sans', sans-serif; background: #F0F2F5; color: #1A1A1A; font-size: 13px; }
+:root {
+  --navy: #0B1F3A; --navy-mid: #132D52; --navy-light: #1C3F6E;
+  --saffron: #FF7A1A;
+  --red: #C8102E; --amber: #E5A100; --green: #1F7A4D; --slate: #506070;
+  --mono: 'IBM Plex Mono', monospace;
+}
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-thumb { background: #C0C8D4; border-radius: 3px; }
+
+.canvas-wrap { cursor: grab; user-select: none; }
+.canvas-wrap:active { cursor: grabbing; }
+
+.tooltip {
+  position: fixed;
+  pointer-events: none;
+  background: #0B1F3A;
+  color: #fff;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 11px;
+  padding: 7px 10px;
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  z-index: 200;
+  max-width: 220px;
+  line-height: 1.5;
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useRef, useEffect, useCallback, useMemo } = React;
+
+/* ─── NETWORK GEOMETRY ──────────────────────────────────────────── */
+// All KM values are route km from CSMT
+// SVG coordinate system: x = km * scale, y = line vertical position
+// Main line: CSMT(0) → Pune(192) runs left→right
+// Branch 1: Kalyan(54) → Kasara(120) — diverges upward
+// Branch 2: Diva(38) → Vasai Road(62) — diverges downward
+
+const STATIONS = [
+  // Main line
+  { id:"CSMT",  name:"CSMT",        km:0,   line:"main",   importance:"major" },
+  { id:"DADAR", name:"Dadar",       km:9,   line:"main",   importance:"major" },
+  { id:"THANE", name:"Thane",       km:33,  line:"main",   importance:"major" },
+  { id:"DIVA",  name:"Diva Jn.",    km:38,  line:"main",   importance:"junction" },
+  { id:"KALYAN",name:"Kalyan Jn.",  km:54,  line:"main",   importance:"major" },
+  { id:"BADLAPUR",name:"Badlapur",  km:71,  line:"main",   importance:"minor" },
+  { id:"KARJAT",name:"Karjat",      km:101, line:"main",   importance:"major" },
+  { id:"KHOPOLI",name:"Khopoli",    km:109, line:"main",   importance:"minor" },
+  { id:"LONAVLA",name:"Lonavla",    km:128, line:"main",   importance:"major" },
+  { id:"KHANDALA",name:"Khandala",  km:133, line:"main",   importance:"minor" },
+  { id:"PUNE",  name:"Pune",        km:192, line:"main",   importance:"major" },
+  // Kasara branch
+  { id:"AMBIVLI",name:"Ambivli",    km:62,  line:"kasara", importance:"minor" },
+  { id:"ASANGAON",name:"Asangaon",  km:82,  line:"kasara", importance:"minor" },
+  { id:"KASARA",name:"Kasara",      km:120, line:"kasara", importance:"major" },
+  // Vasai branch
+  { id:"VASAI", name:"Vasai Road",  km:62,  line:"vasai",  importance:"major" },
+];
+
+const TUNNELS = [
+  { line:"main", kmStart:128, kmEnd:133, label:"Bhor Ghat" },
+  { line:"main", kmStart:98,  kmEnd:101, label:"Bhore Ghat Appr." },
+];
+
+const BRIDGES = [
+  { line:"main", kmStart:30,  kmEnd:33,  label:"Ulhas Rv." },
+  { line:"main", kmStart:48,  kmEnd:50,  label:"Bhivpuri" },
+  { line:"kasara", kmStart:78, kmEnd:80, label:"Ulhas (N)" },
+];
+
+// Route classification segments
+const ROUTE_SEGMENTS = [
+  { line:"main", kmStart:0,   kmEnd:54,  route:"A",  gmt:62 },
+  { line:"main", kmStart:54,  kmEnd:101, route:"A",  gmt:44 },
+  { line:"main", kmStart:101, kmEnd:128, route:"B",  gmt:28 },
+  { line:"main", kmStart:128, kmEnd:192, route:"C",  gmt:18 },
+  { line:"kasara",kmStart:54, kmEnd:120, route:"B",  gmt:22 },
+  { line:"vasai", kmStart:38, kmEnd:62,  route:"C",  gmt:14 },
+];
+
+// Inspection runs
+const INSPECTION_RUNS = [
+  { line:"main", kmStart:0,   date:"24 Apr 2026", type:"DRT" },
+  { line:"main", kmStart:101, date:"18 Apr 2026", type:"SRT" },
+  { line:"kasara",kmStart:54, date:"20 Apr 2026", type:"SRT" },
+];
+
+// Fractures (last 90 days)
+const FRACTURES = [
+  { km:22,  line:"main",   date:"15 Mar 2026" },
+  { km:67,  line:"main",   date:"02 Apr 2026" },
+  { km:115, line:"main",   date:"28 Feb 2026" },
+  { km:88,  line:"kasara", date:"10 Mar 2026" },
+];
+
+// Defects — use same vocabulary as Priority Queue
+const MAP_DEFECTS = [
+  { id:"MD01", km:8.4,  line:"main",   side:"up",   uic:"111-1.2", curr:"IMR",  pred:"IMR",  gmtTT:0,   cluster:"CL-01", probe:"70°CF" },
+  { id:"MD02", km:8.6,  line:"main",   side:"dn",   uic:"112-1.1", curr:"IMR",  pred:"IMR",  gmtTT:0,   cluster:"CL-01", probe:"70°GF" },
+  { id:"MD03", km:21.8, line:"main",   side:"up",   uic:"211-1.2", curr:"IMR",  pred:"IMR",  gmtTT:0,   cluster:null,    probe:"70°CB" },
+  { id:"MD04", km:33.5, line:"main",   side:"dn",   uic:"113-2.1", curr:"OBS",  pred:"IMR",  gmtTT:1.9, cluster:null,    probe:"70°GF" },
+  { id:"MD05", km:41.2, line:"main",   side:"up",   uic:"DFWR",    curr:"DFWR", pred:"IMRW", gmtTT:1.4, cluster:null,    probe:"37°CF" },
+  { id:"MD06", km:48.8, line:"main",   side:"dn",   uic:"135-4.2", curr:"OBS",  pred:"IMR",  gmtTT:3.2, cluster:null,    probe:"37°CB" },
+  { id:"MD07", km:55.3, line:"main",   side:"up",   uic:"111-3.2", curr:"OBS",  pred:"IMR",  gmtTT:2.4, cluster:"CL-02", probe:"70°CF" },
+  { id:"MD08", km:55.6, line:"main",   side:"dn",   uic:"112-1.4", curr:"OBS",  pred:"IMR",  gmtTT:2.6, cluster:"CL-02", probe:"70°GF" },
+  { id:"MD09", km:72.4, line:"main",   side:"up",   uic:"213-2.2", curr:"OBS",  pred:"OBS",  gmtTT:6.8, cluster:null,    probe:"70°CB" },
+  { id:"MD10", km:88.1, line:"main",   side:"dn",   uic:"111-2.4", curr:"OBS",  pred:"IMR",  gmtTT:2.3, cluster:null,    probe:"70°GF" },
+  { id:"MD11", km:104.7,line:"main",   side:"up",   uic:"DFWO",    curr:"DFWO", pred:"DFWR", gmtTT:4.1, cluster:null,    probe:"37°CF" },
+  { id:"MD12", km:112.3,line:"main",   side:"dn",   uic:"112-2.3", curr:"IMR",  pred:"IMR",  gmtTT:0,   cluster:null,    probe:"70°CF" },
+  { id:"MD13", km:119.8,line:"main",   side:"up",   uic:"135-2.1", curr:"OBS",  pred:"OBS",  gmtTT:7.4, cluster:null,    probe:"37°CB" },
+  { id:"MD14", km:131.4,line:"main",   side:"dn",   uic:"111-4.1", curr:"GCC",  pred:"OBS",  gmtTT:5.1, cluster:null,    probe:"70°GF" },
+  { id:"MD15", km:158.2,line:"main",   side:"up",   uic:"211-3.3", curr:"OBS",  pred:"OBS",  gmtTT:8.2, cluster:null,    probe:"70°CF" },
+  { id:"MD16", km:175.6,line:"main",   side:"dn",   uic:"113-4.1", curr:"OBS",  pred:"IMR",  gmtTT:1.9, cluster:null,    probe:"70°NGF" },
+  { id:"MD17", km:68.4, line:"kasara", side:"up",   uic:"135-3.1", curr:"OBS",  pred:"IMR",  gmtTT:4.0, cluster:null,    probe:"37°CF" },
+  { id:"MD18", km:84.2, line:"kasara", side:"dn",   uic:"211-2.1", curr:"OBS",  pred:"OBS",  gmtTT:8.2, cluster:null,    probe:"70°CB" },
+  { id:"MD19", km:96.5, line:"kasara", side:"up",   uic:"DFWN",    curr:"DFWN", pred:"DFWO", gmtTT:9.2, cluster:null,    probe:"37°CF" },
+  { id:"MD20", km:45.8, line:"vasai",  side:"dn",   uic:"112-1.4", curr:"OBS",  pred:"IMR",  gmtTT:2.7, cluster:null,    probe:"70°GF" },
+];
+
+// Cluster spans (km start/end)
+const CLUSTER_SPANS = {
+  "CL-01": { kmStart:8.4, kmEnd:8.6, line:"main", count:2 },
+  "CL-02": { kmStart:55.3, kmEnd:55.6, line:"main", count:2 },
+};
+
+/* ─── COLOUR HELPERS ─────────────────────────────────────────────── */
+function defectColor(curr, pred) {
+  if (curr === "IMR" || curr === "IMRW") return "#C8102E";
+  if (pred === "IMR" || pred === "IMRW") return "#E5A100";
+  if (curr === "GCC") return "#3A5BC7";
+  if (curr === "OBS" || curr === "OBSW") return "#E5A100";
+  return "#506070";
+}
+function defectRadius(pred, gmtTT) {
+  if (pred === "IMR" || pred === "IMRW") return gmtTT === 0 ? 7 : 5.5;
+  return 4;
+}
+function gmtBandColor(gmt) {
+  if (gmt > 50) return "rgba(11,31,58,0.10)";
+  if (gmt > 30) return "rgba(11,31,58,0.06)";
+  if (gmt > 15) return "rgba(11,31,58,0.03)";
+  return "rgba(11,31,58,0.01)";
+}
+function routeColor(r) {
+  const m = { A:"#1F7A4D", B:"#3A5BC7", C:"#E5A100", D:"#506070" };
+  return m[r] || "#506070";
+}
+
+/* ─── API CONFIG ────────────────────────────────────────────────── */
+const API_BASE = window.location.origin;
+const api = (path) => fetch(API_BASE + path).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+
+function sevcol(amp) {
+  if (amp >= 80) return "#C8102E";
+  if (amp >= 60) return "#E5A100";
+  if (amp >= 30) return "#3e9dd6";
+  return "#3fb950";
+}
+
+/* ─── CHAINAGE STRIP (real data) ────────────────────────────────── */
+function ChainageStrip({ defects, clusters }) {
+  if (!defects || !defects.length) return <div style={{ padding:"20px", textAlign:"center", color:"#8A95A3", fontSize:"11px" }}>No located defects for this section.</div>;
+  const W = 1100, H = 120, m = {l:12, r:12, t:38, b:24};
+  const xs = defects.map(d=>d.chainage_m); const x0=Math.min(...xs), x1=Math.max(...xs);
+  const X = c => m.l + ((c-x0)/((x1-x0)||1)) * (W-m.l-m.r);
+  return (
+    <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{display:"block"}}>
+      {(clusters||[]).map((c,i)=>{
+        const a=X(c.chainage_start_m), b=X(c.chainage_end_m);
+        return <rect key={i} x={a-3} y={H/2-18} width={Math.max(6,b-a+6)} height={36} fill="rgba(229,161,0,0.15)" stroke="#E5A100" strokeWidth="1" rx="4"/>;
+      })}
+      <line x1={m.l} y1={H/2} x2={W-m.r} y2={H/2} stroke="#8A95A3" strokeWidth="3"/>
+      {defects.map((d,i)=>{
+        const cx=X(d.chainage_m), up=(d.rail==="L"||d.rail==="LR");
+        const cy=H/2+(up?-14:14);
+        return (
+          <g key={i} style={{cursor:"pointer"}} onClick={()=>{ window.location.href="Defect Detail.html?key="+encodeURIComponent(d.defect_key); }}>
+            <circle cx={cx} cy={cy} r="5" fill={sevcol(d.latest_amp)} stroke="#FFF" strokeWidth="1.5"/>
+            <title>KM {d.km}+{d.meter} {d.rail} {Math.round(d.latest_amp)}%FSH {d.triage_level}</title>
+          </g>
+        );
+      })}
+      <text x={m.l} y={H-6} fill="#8A95A3" fontSize="9" fontFamily="IBM Plex Mono">KM {(x0/1000).toFixed(2)}</text>
+      <text x={W-m.r} y={H-6} fill="#8A95A3" fontSize="9" fontFamily="IBM Plex Mono" textAnchor="end">KM {(x1/1000).toFixed(2)}</text>
+      <text x={W/2} y={18} fill="#8A95A3" fontSize="10" fontFamily="IBM Plex Sans" textAnchor="middle">
+        {defects.length} defects · {(clusters||[]).length} clusters · ▲ Left rail · ▼ Right rail · click → Defect Detail
+      </text>
+      {/* Severity legend */}
+      {[["≥80%","#C8102E"],["60–80%","#E5A100"],["30–60%","#3e9dd6"],["<30%","#3fb950"]].map(([l,c],i)=>(
+        <g key={l}>
+          <circle cx={16+i*76} cy={10} r="4" fill={c}/>
+          <text x={24+i*76} y={14} fontSize="8" fill="#506070" fontFamily="IBM Plex Sans">{l}</text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+/* ─── MAIN APP ───────────────────────────────────────────────────── */
+function App() {
+  // ── Layout state
+  const svgRef = useRef(null);
+  const wrapRef = useRef(null);
+  const [viewBox, setViewBox] = useState({ x: -40, y: -120, w: 2200, h: 480 });
+  const [isPanning, setIsPanning] = useState(false);
+  const panStart = useRef(null);
+  const vbStart = useRef(null);
+
+  // ── Layers
+  const [layers, setLayers] = useState({
+    heatmap: true, clusters: true, route: true, gmt: true,
+    fractures: true, inspection: true, tunnels: true,
+  });
+  function toggleLayer(k) { setLayers(l => ({ ...l, [k]: !l[k] })); }
+
+  // ── Line filter
+  const [lineFilter, setLineFilter] = useState("Both");
+
+  // ── Tooltip
+  const [tooltip, setTooltip] = useState(null); // { x, y, defect }
+
+  // ── Selected section / defect
+  const [selectedRange, setSelectedRange] = useState(null); // { kmStart, kmEnd, line }
+  const [selectedDefect, setSelectedDefect] = useState(null);
+
+  // ── Real data API state
+  const [sections, setSections] = useState([]);
+  const [selectedSec, setSelectedSec] = useState(null);
+  const [trackData, setTrackData] = useState(null);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [showLiveStrip, setShowLiveStrip] = useState(true);
+
+  useEffect(() => {
+    api("/api/sections").then(s => {
+      setSections(s);
+      if (s.length) setSelectedSec(s[0]);
+    }).catch(()=>{});
+  }, []);
+
+  useEffect(() => {
+    if (!selectedSec) return;
+    setDataLoading(true);
+    api(`/api/trackmap?railway=${encodeURIComponent(selectedSec.railway)}&section=${encodeURIComponent(selectedSec.section)}`)
+      .then(d => { setTrackData(d); setDataLoading(false); })
+      .catch(() => setDataLoading(false));
+  }, [selectedSec]);
+
+  // ── Tweaks
+  const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{ "showHindi": true, "dotScale": 1.0 }/*EDITMODE-END*/;
+  const _tw = useTweaks(TWEAK_DEFAULTS);
+  const tweaks = (_tw && _tw.tweaks) ? _tw.tweaks : TWEAK_DEFAULTS;
+  const setTweak = (_tw && _tw.setTweak) ? _tw.setTweak : () => {};
+  const [tweaksVisible, setTweaksVisible] = useState(false);
+  useEffect(() => {
+    const h = e => {
+      if (e.data?.type === "__activate_edit_mode") setTweaksVisible(true);
+      if (e.data?.type === "__deactivate_edit_mode") setTweaksVisible(false);
+    };
+    window.addEventListener("message", h);
+    window.parent.postMessage({ type: "__edit_mode_available" }, "*");
+    return () => window.removeEventListener("message", h);
+  }, []);
+
+  // ── SVG coordinate mapping
+  // Main line: y=200 (centre). Branches diverge vertically.
+  const LINE_Y = { main: 200, kasara: 100, vasai: 310 };
+  const KM_SCALE = 10; // px per km
+
+  function kmToX(km) { return km * KM_SCALE; }
+  function lineY(line) { return LINE_Y[line] ?? 200; }
+
+  // Branch junction points
+  // Kasara: diverges from Kalyan (km54) upward
+  // Vasai: diverges from Diva (km38) downward
+  function branchPath(line) {
+    if (line === "kasara") {
+      const jx = kmToX(54), jy = LINE_Y.main;
+      const ex = kmToX(120), ey = LINE_Y.kasara;
+      return `M${jx},${jy} C${jx+80},${jy} ${jx+80},${ey} ${ex},${ey}`;
+    }
+    if (line === "vasai") {
+      const jx = kmToX(38), jy = LINE_Y.main;
+      const ex = kmToX(62), ey = LINE_Y.vasai;
+      return `M${jx},${jy} C${jx+40},${jy} ${jx+40},${ey} ${ex},${ey}`;
+    }
+    return "";
+  }
+
+  // Map defect km to SVG x,y
+  function defectXY(d) {
+    const x = kmToX(d.km);
+    let y = lineY(d.line);
+    // For branches, interpolate along curve (approximate with straight line for heatmap)
+    if (d.line === "kasara") {
+      const t = (d.km - 54) / (120 - 54);
+      y = LINE_Y.main + t * (LINE_Y.kasara - LINE_Y.main);
+      const jx = kmToX(54), ex = kmToX(120);
+      // simple lerp x along branch
+    }
+    if (d.line === "vasai") {
+      const t = (d.km - 38) / (62 - 38);
+      y = LINE_Y.main + t * (LINE_Y.vasai - LINE_Y.main);
+    }
+    // Side offset for up/dn rail
+    const offset = d.side === "up" ? -10 : 10;
+    return { x, y: y + offset };
+  }
+
+  // ── Pan / zoom
+  function onWheel(e) {
+    e.preventDefault();
+    const factor = e.deltaY > 0 ? 1.12 : 0.89;
+    setViewBox(vb => {
+      const newW = Math.max(400, Math.min(4000, vb.w * factor));
+      const newH = newW * (vb.h / vb.w);
+      // Zoom toward mouse
+      const rect = wrapRef.current?.getBoundingClientRect();
+      const mx = rect ? (e.clientX - rect.left) / rect.width : 0.5;
+      const my = rect ? (e.clientY - rect.top) / rect.height : 0.5;
+      const newX = vb.x + (vb.w - newW) * mx;
+      const newY = vb.y + (vb.h - newH) * my;
+      return { x: newX, y: newY, w: newW, h: newH };
+    });
+  }
+
+  function onMouseDown(e) {
+    if (e.button !== 0) return;
+    setIsPanning(true);
+    panStart.current = { x: e.clientX, y: e.clientY };
+    vbStart.current = { ...viewBox };
+  }
+  function onMouseMove(e) {
+    if (!isPanning) return;
+    const dx = e.clientX - panStart.current.x;
+    const dy = e.clientY - panStart.current.y;
+    const rect = wrapRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const scaleX = vbStart.current.w / rect.width;
+    const scaleY = vbStart.current.h / rect.height;
+    setViewBox({ ...vbStart.current, x: vbStart.current.x - dx * scaleX, y: vbStart.current.y - dy * scaleY });
+  }
+  function onMouseUp() { setIsPanning(false); }
+
+  // ── KM ruler ticks — density based on zoom
+  const kmPerPx = viewBox.w / (wrapRef.current?.getBoundingClientRect().width || 1000);
+  const rulerStep = kmPerPx < 0.04 ? 1 : kmPerPx < 0.12 ? 5 : 10;
+  const rulerTicks = [];
+  for (let km = 0; km <= 200; km += rulerStep) rulerTicks.push(km);
+
+  // ── Filtered defects
+  const visDefects = MAP_DEFECTS.filter(d => {
+    if (lineFilter === "Up" && d.side !== "up") return false;
+    if (lineFilter === "Down" && d.side !== "dn") return false;
+    return true;
+  });
+
+  // ── KPIs
+  const imrCount = MAP_DEFECTS.filter(d => d.curr === "IMR" || d.curr === "IMRW").length;
+  const predictedImr = MAP_DEFECTS.filter(d => d.pred === "IMR" || d.pred === "IMRW").length;
+
+  // ── Section click handler
+  function handleStationClick(st) {
+    const range = { kmStart: Math.max(0, st.km - 10), kmEnd: st.km + 10, line: st.line };
+    setSelectedRange(range);
+    setSelectedDefect(null);
+  }
+
+  // Defects in selected range
+  const rangeDefects = selectedRange
+    ? visDefects.filter(d => d.line === selectedRange.line && d.km >= selectedRange.kmStart && d.km <= selectedRange.kmEnd)
+    : [];
+
+  return (
+    <div style={{ display:"flex", height:"100vh", background:"#F0F2F5", overflow:"hidden" }}>
+
+      {/* LEFT NAV */}
+      <nav style={{ width:"52px", flexShrink:0, background:"#0B1F3A", display:"flex", flexDirection:"column", alignItems:"center", gap:"2px" }}>
+        <div style={{ width:"52px", height:"52px", background:"#132D52", display:"flex", alignItems:"center", justifyContent:"center", borderBottom:"1px solid #1C3F6E", flexShrink:0 }}>
+          <span style={{ fontSize:"18px", fontWeight:700, color:"#FF7A1A" }}>⌁</span>
+        </div>
+        {[{icon:"≡",label:"Queue",href:"Priority Queue.html"},{icon:"◈",label:"Map",active:true},{icon:"∿",label:"Defect",href:"Defect Detail.html"},{icon:"⊞",label:"Cluster",href:"Cluster View.html"},{icon:"↑",label:"Import",href:"Inspection Run Import.html"},{icon:"□",label:"Annex",href:"Annexure III Form.html"},{icon:"⊙",label:"Zone",href:"Zone Rollup.html"},{icon:"⬡",label:"Model",href:"Model.html"}].map(({icon,label,active,href}) => (
+          <div key={label} title={label} onClick={()=>{ if (!active && href) window.location.href=href; }}
+            style={{ width:"44px", height:"44px", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:"2px", background:active?"#1C3F6E":"transparent", borderRadius:"4px", cursor:active?"default":"pointer", borderLeft:active?"2px solid #FF7A1A":"2px solid transparent" }}>
+            <span style={{ fontSize:"15px", color:active?"#FFFFFF":"#6B8BB0", lineHeight:1 }}>{icon}</span>
+            <span style={{ fontSize:"7.5px", color:active?"#FFFFFF":"#4A6480", letterSpacing:"0.05em", textTransform:"uppercase" }}>{label}</span>
+          </div>
+        ))}
+        <div style={{ marginTop:"auto", marginBottom:"8px" }}>
+          <div style={{ width:"28px", height:"28px", background:"#1C3F6E", borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"10px", fontWeight:700, color:"#FFFFFF" }}>IR</div>
+        </div>
+      </nav>
+
+      {/* MAIN */}
+      <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", minWidth:0 }}>
+
+        {/* TOP BAR */}
+        <header style={{ height:"48px", background:"#FFFFFF", borderBottom:"1px solid #D8DCE3", display:"flex", alignItems:"center", padding:"0 16px", gap:"12px", flexShrink:0 }}>
+          <div>
+            <div style={{ fontSize:"13px", fontWeight:700, color:"#0B1F3A" }}>Aonami Echo</div>
+            {tweaks.showHindi && <div style={{ fontSize:"9px", color:"#8A95A3" }}>एको</div>}
+          </div>
+          <div style={{ width:"1px", height:"24px", background:"#E5E5E5" }} />
+          <div style={{ display:"flex", alignItems:"center", gap:"6px" }}>
+            <span style={{ fontSize:"9px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.07em" }}>Division</span>
+            <select style={{ padding:"3px 7px", fontSize:"11.5px", fontWeight:600, border:"1px solid #D8DCE3", borderRadius:"3px", background:"#FFFFFF", color:"#0B1F3A", fontFamily:"IBM Plex Sans" }}>
+              <option>Mumbai — CR</option><option>Pune — CR</option>
+            </select>
+          </div>
+          <div style={{ width:"1px", height:"24px", background:"#E5E5E5" }} />
+          <span style={{ fontSize:"11px", color:"#8A95A3" }}>Track Map {tweaks.showHindi && <span style={{ fontSize:"9px", color:"#C0CACE" }}>/ ट्रैक मानचित्र</span>}</span>
+
+          {/* Line filter */}
+          <div style={{ display:"flex", gap:"2px", background:"#F0F2F5", borderRadius:"4px", padding:"2px", marginLeft:"4px" }}>
+            {["Both","Up","Down"].map(l => (
+              <button key={l} onClick={() => setLineFilter(l)} style={{ padding:"3px 9px", fontSize:"11px", fontWeight: lineFilter===l?600:400, background: lineFilter===l?"#0B1F3A":"transparent", color: lineFilter===l?"#FFFFFF":"#5A6475", border:"none", borderRadius:"3px", cursor:"pointer" }}>{l}</button>
+            ))}
+          </div>
+
+          <div style={{ marginLeft:"auto", display:"flex", gap:"8px", alignItems:"center" }}>
+            <span style={{ fontSize:"10px", color:"#8A95A3" }}>Last run: <span style={{ fontFamily:"var(--mono)", color:"#0B1F3A" }}>24 Apr 2026</span></span>
+            <button style={{ padding:"4px 10px", fontSize:"10.5px", fontWeight:600, background:"#0B1F3A", color:"#FFFFFF", border:"none", borderRadius:"3px", cursor:"pointer" }}>Print A4</button>
+            <div style={{ width:"1px", height:"20px", background:"#E5E5E5" }} />
+            <img src="assets/ir-emblem.svg" alt="Indian Railways" style={{ width:"24px", height:"24px", objectFit:"contain", opacity:0.85 }} />
+          </div>
+        </header>
+
+        {/* KPI STRIP */}
+        <div style={{ padding:"8px 16px", background:"#FFFFFF", borderBottom:"1px solid #E5E5E5", display:"flex", gap:"20px", alignItems:"center", flexShrink:0 }}>
+          {[
+            { label:"Total defects on division", value: MAP_DEFECTS.length, accent:"#506070" },
+            { label:"Active IMR / IMRW", value: imrCount, accent:"#C8102E" },
+            { label:"Predicted to escalate", value: predictedImr, accent:"#E5A100" },
+            { label:"Fractures last 90 days", value: FRACTURES.length, accent:"#1A1A1A" },
+            { label:"Next inspection", value:"28 Apr 2026", sub:"Main line KM 0–54", accent:"#1F7A4D", text:true },
+          ].map((k,i) => (
+            <div key={i} style={{ display:"flex", flexDirection:"column", borderLeft: i>0?"1px solid #E5E5E5":"none", paddingLeft: i>0?"20px":0 }}>
+              <span style={{ fontSize:"9px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.07em" }}>{k.label}</span>
+              <span style={{ fontFamily: k.text?"IBM Plex Sans":"var(--mono)", fontSize: k.text?"12px":"16px", fontWeight:700, color: k.accent, marginTop:"1px" }}>{k.value}</span>
+              {k.sub && <span style={{ fontSize:"9px", color:"#8A95A3" }}>{k.sub}</span>}
+            </div>
+          ))}
+
+          {/* ── LIVE DATA STRIP ── */}
+          <div style={{ marginLeft:"auto", display:"flex", gap:"8px", alignItems:"center" }}>
+            <select value={selectedSec ? selectedSec.railway+"|"+selectedSec.section : ""}
+              onChange={e => {
+                const [rw, sec] = e.target.value.split("|");
+                setSelectedSec(sections.find(s=>s.railway===rw&&s.section===sec)||null);
+              }}
+              style={{ padding:"3px 7px", fontSize:"11px", border:"1px solid #D8DCE3", borderRadius:"3px", background:"#FFF", color:"#0B1F3A", maxWidth:"280px" }}>
+              {sections.map(s=>(
+                <option key={s.railway+"|"+s.section} value={s.railway+"|"+s.section}>
+                  {s.railway.replace(" Railway","")} · {s.section} ({s.n} defects, {s.near_imr} near-IMR)
+                </option>
+              ))}
+            </select>
+            <button onClick={()=>setShowLiveStrip(v=>!v)}
+              style={{ padding:"3px 8px", fontSize:"10px", border:"1px solid #3e9dd6", borderRadius:"3px", background: showLiveStrip?"#3e9dd6":"#FFF", color: showLiveStrip?"#FFF":"#3e9dd6", cursor:"pointer" }}>
+              {showLiveStrip?"Hide live strip":"Show live strip"}
+            </button>
+          </div>
+        </div>
+
+        {/* CANVAS + RIGHT PANEL */}
+        <div style={{ flex:1, display:"flex", overflow:"hidden" }}>
+
+          {/* MAP AREA */}
+          <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative" }}>
+
+            {/* Layer toggles */}
+            <div style={{ padding:"6px 14px", background:"#F8F9FB", borderBottom:"1px solid #E5E5E5", display:"flex", gap:"8px", flexWrap:"wrap", flexShrink:0 }}>
+              {[
+                { key:"heatmap",   label:"Defect heatmap",      color:"#C8102E" },
+                { key:"clusters",  label:"Cluster overlays",    color:"#C8102E" },
+                { key:"route",     label:"Route classification", color:"#1F7A4D" },
+                { key:"gmt",       label:"GMT band shading",    color:"#506070" },
+                { key:"fractures", label:"Recent fractures",    color:"#1A1A1A" },
+                { key:"inspection",label:"Inspection runs",     color:"#0B1F3A" },
+                { key:"tunnels",   label:"Tunnels / bridges",   color:"#506070" },
+              ].map(l => (
+                <button key={l.key} onClick={() => toggleLayer(l.key)} style={{
+                  display:"flex", alignItems:"center", gap:"5px",
+                  padding:"3px 8px", fontSize:"10.5px",
+                  background: layers[l.key] ? "#FFFFFF" : "#F0F2F5",
+                  color: layers[l.key] ? "#1A1A1A" : "#9AA4B0",
+                  border:`1px solid ${layers[l.key] ? l.color+"60" : "#D8DCE3"}`,
+                  borderRadius:"3px", cursor:"pointer", fontFamily:"IBM Plex Sans",
+                }}>
+                  <span style={{ width:"8px", height:"8px", borderRadius:"50%", background: layers[l.key] ? l.color : "#C0C8D4", display:"inline-block", flexShrink:0 }} />
+                  {l.label}
+                </button>
+              ))}
+            </div>
+
+            {/* ── Live Chainage Strip (real data) ── */}
+            {showLiveStrip && selectedSec && (
+              <div style={{ background:"#F8F9FB", borderBottom:"2px solid #3e9dd6", padding:"10px 14px", flexShrink:0 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:"8px", marginBottom:"6px" }}>
+                  <span style={{ fontSize:"9.5px", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", color:"#3e9dd6" }}>Live data</span>
+                  <span style={{ fontFamily:"var(--mono)", fontSize:"11px", color:"#0B1F3A", fontWeight:600 }}>{(selectedSec.railway||"").replace(" Railway","")} · {selectedSec.section}</span>
+                  <span style={{ fontSize:"9.5px", color:"#8A95A3" }}>{selectedSec.n} defects · {selectedSec.near_imr} near-IMR</span>
+                  {dataLoading && <span style={{ fontSize:"9px", color:"#8A95A3" }}>Loading…</span>}
+                </div>
+                {trackData && <ChainageStrip defects={trackData.defects} clusters={trackData.clusters}/>}
+              </div>
+            )}
+
+            {/* SVG Canvas */}
+            <div ref={wrapRef} className="canvas-wrap" style={{ flex:1, overflow:"hidden", background:"#FAFBFC", position:"relative" }}
+              onWheel={onWheel}
+              onMouseDown={onMouseDown}
+              onMouseMove={onMouseMove}
+              onMouseUp={onMouseUp}
+              onMouseLeave={onMouseUp}
+            >
+              <svg
+                ref={svgRef}
+                width="100%" height="100%"
+                viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
+                style={{ display:"block" }}
+              >
+                <defs>
+                  <pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">
+                    <path d="M50,0 L0,0 0,50" fill="none" stroke="#EAECEF" strokeWidth="0.5"/>
+                  </pattern>
+                </defs>
+
+                {/* Background grid */}
+                <rect x={-200} y={-300} width={2600} height={800} fill="url(#grid)" />
+
+                {/* GMT band shading */}
+                {layers.gmt && ROUTE_SEGMENTS.map((seg, i) => {
+                  const x1 = kmToX(seg.kmStart), x2 = kmToX(seg.kmEnd);
+                  const y = lineY(seg.line);
+                  return (
+                    <rect key={i} x={x1} y={y-40} width={x2-x1} height={80}
+                      fill={gmtBandColor(seg.gmt)} />
+                  );
+                })}
+
+                {/* Route classification bands */}
+                {layers.route && ROUTE_SEGMENTS.map((seg, i) => {
+                  const x1 = kmToX(seg.kmStart), x2 = kmToX(seg.kmEnd);
+                  const y = lineY(seg.line);
+                  const c = routeColor(seg.route);
+                  return (
+                    <g key={i}>
+                      <rect x={x1} y={y-32} width={x2-x1} height={4} fill={c} opacity={0.6} rx={1} />
+                      <text x={(x1+x2)/2} y={y-37} textAnchor="middle" fontSize="8" fill={c} fontFamily="IBM Plex Mono" fontWeight="600" opacity={0.8}>Route {seg.route}</text>
+                    </g>
+                  );
+                })}
+
+                {/* Tunnel overlays */}
+                {layers.tunnels && TUNNELS.map((t, i) => {
+                  const x1 = kmToX(t.kmStart), x2 = kmToX(t.kmEnd);
+                  const y = lineY(t.line);
+                  return (
+                    <g key={i}>
+                      <rect x={x1} y={y-22} width={x2-x1} height={44} fill="#F0F0F0" stroke="#C0C8D4" strokeWidth="1" rx={2} />
+                      <text x={(x1+x2)/2} y={y-25} textAnchor="middle" fontSize="7.5" fill="#506070" fontFamily="IBM Plex Sans">⬛ {t.label}</text>
+                    </g>
+                  );
+                })}
+
+                {/* Bridge overlays */}
+                {layers.tunnels && BRIDGES.map((b, i) => {
+                  const x1 = kmToX(b.kmStart), x2 = kmToX(b.kmEnd);
+                  const y = lineY(b.line);
+                  return (
+                    <g key={i}>
+                      <rect x={x1} y={y-16} width={x2-x1} height={32} fill="none" stroke="#A0B0C0" strokeWidth="1.5" strokeDasharray="4,3" rx={1} />
+                      <text x={(x1+x2)/2} y={y-19} textAnchor="middle" fontSize="7" fill="#7090A8" fontFamily="IBM Plex Sans">{b.label}</text>
+                    </g>
+                  );
+                })}
+
+                {/* Branch line: Vasai */}
+                <path d={branchPath("vasai")} fill="none" stroke="#8A9CB0" strokeWidth="3" strokeLinecap="round" />
+                {/* Branch label */}
+                <text x={kmToX(55)} y={LINE_Y.vasai+16} fontSize="9" fill="#6A7A8A" fontFamily="IBM Plex Sans" fontStyle="italic">→ Vasai Road branch</text>
+
+                {/* Branch line: Kasara */}
+                <path d={branchPath("kasara")} fill="none" stroke="#8A9CB0" strokeWidth="3" strokeLinecap="round" />
+                <text x={kmToX(90)} y={LINE_Y.kasara-14} fontSize="9" fill="#6A7A8A" fontFamily="IBM Plex Sans" fontStyle="italic">→ Kasara branch</text>
+
+                {/* Main line */}
+                <line
+                  x1={kmToX(0)} y1={LINE_Y.main}
+                  x2={kmToX(192)} y2={LINE_Y.main}
+                  stroke="#0B1F3A" strokeWidth="4" strokeLinecap="round"
+                />
+                {/* Up/down rail offset guides */}
+                <line x1={kmToX(0)} y1={LINE_Y.main-10} x2={kmToX(192)} y2={LINE_Y.main-10} stroke="#1C3F6E" strokeWidth="1" strokeDasharray="2,6" opacity="0.3" />
+                <line x1={kmToX(0)} y1={LINE_Y.main+10} x2={kmToX(192)} y2={LINE_Y.main+10} stroke="#1C3F6E" strokeWidth="1" strokeDasharray="2,6" opacity="0.3" />
+
+                {/* KM ruler */}
+                <line x1={kmToX(0)} y1={LINE_Y.main+55} x2={kmToX(192)} y2={LINE_Y.main+55} stroke="#C0C8D4" strokeWidth="1" />
+                {rulerTicks.map(km => (
+                  <g key={km}>
+                    <line x1={kmToX(km)} y1={LINE_Y.main+52} x2={kmToX(km)} y2={LINE_Y.main+58} stroke="#8A95A3" strokeWidth="1" />
+                    <text x={kmToX(km)} y={LINE_Y.main+68} textAnchor="middle" fontSize="8" fill="#8A95A3" fontFamily="IBM Plex Mono">{km}</text>
+                  </g>
+                ))}
+                <text x={kmToX(96)} y={LINE_Y.main+80} textAnchor="middle" fontSize="7.5" fill="#8A95A3" fontFamily="IBM Plex Sans">Route km from CSMT</text>
+
+                {/* Cluster brackets */}
+                {layers.clusters && Object.entries(CLUSTER_SPANS).map(([id, cl]) => {
+                  const x1 = kmToX(cl.kmStart) - 8, x2 = kmToX(cl.kmEnd) + 8;
+                  const y = lineY(cl.line);
+                  return (
+                    <g key={id}>
+                      <path d={`M${x1},${y-22} L${x1},${y-28} L${x2},${y-28} L${x2},${y-22}`}
+                        fill="none" stroke="#C8102E" strokeWidth="1.5" />
+                      <rect x={(x1+x2)/2-12} y={y-38} width={24} height={12} fill="#C8102E" rx={2} />
+                      <text x={(x1+x2)/2} y={y-28.5} textAnchor="middle" fontSize="7.5" fill="#FFFFFF" fontFamily="IBM Plex Mono" fontWeight="600">{cl.count}×</text>
+                    </g>
+                  );
+                })}
+
+                {/* Inspection run markers */}
+                {layers.inspection && INSPECTION_RUNS.map((r, i) => {
+                  const x = kmToX(r.kmStart);
+                  const y = lineY(r.line);
+                  return (
+                    <g key={i}>
+                      <polygon points={`${x},${y+30} ${x-6},${y+42} ${x+6},${y+42}`} fill="#0B1F3A" />
+                      <text x={x} y={y+52} textAnchor="middle" fontSize="7.5" fill="#506070" fontFamily="IBM Plex Mono">{r.date}</text>
+                      <text x={x} y={y+61} textAnchor="middle" fontSize="7" fill="#8A95A3" fontFamily="IBM Plex Sans">{r.type}</text>
+                    </g>
+                  );
+                })}
+
+                {/* Fracture markers */}
+                {layers.fractures && FRACTURES.map((f, i) => {
+                  const x = kmToX(f.km), y = lineY(f.line);
+                  return (
+                    <g key={i}>
+                      <line x1={x-5} y1={y-5} x2={x+5} y2={y+5} stroke="#1A1A1A" strokeWidth="2.5" />
+                      <line x1={x+5} y1={y-5} x2={x-5} y2={y+5} stroke="#1A1A1A" strokeWidth="2.5" />
+                      <text x={x} y={y-10} textAnchor="middle" fontSize="7" fill="#506070" fontFamily="IBM Plex Mono">{f.date.split(" ")[0]}</text>
+                    </g>
+                  );
+                })}
+
+                {/* Defect dots */}
+                {layers.heatmap && visDefects.map(d => {
+                  const { x, y } = defectXY(d);
+                  const r = defectRadius(d.pred, d.gmtTT) * tweaks.dotScale;
+                  const color = defectColor(d.curr, d.pred);
+                  const isSelected = selectedDefect?.id === d.id;
+                  return (
+                    <circle key={d.id}
+                      cx={x} cy={y} r={r}
+                      fill={color}
+                      stroke={isSelected ? "#FFFFFF" : color}
+                      strokeWidth={isSelected ? 2 : 0.5}
+                      opacity={0.88}
+                      style={{ cursor:"pointer", transition:"r 0.15s" }}
+                      onMouseEnter={e => setTooltip({ x: e.clientX, y: e.clientY, defect: d })}
+                      onMouseMove={e => setTooltip(t => t ? { ...t, x: e.clientX, y: e.clientY } : t)}
+                      onMouseLeave={() => setTooltip(null)}
+                      onClick={e => { e.stopPropagation(); setSelectedDefect(d); setSelectedRange(null); }}
+                    />
+                  );
+                })}
+
+                {/* Station nodes */}
+                {STATIONS.map(st => {
+                  let x = kmToX(st.km);
+                  let y = lineY(st.line);
+                  if (st.line === "kasara") {
+                    const t = (st.km - 54) / (120 - 54);
+                    y = LINE_Y.main + t * (LINE_Y.kasara - LINE_Y.main);
+                  }
+                  if (st.line === "vasai") {
+                    const t = (st.km - 38) / (62 - 38);
+                    y = LINE_Y.main + t * (LINE_Y.vasai - LINE_Y.main);
+                  }
+                  const major = st.importance === "major";
+                  const junction = st.importance === "junction";
+                  return (
+                    <g key={st.id} style={{ cursor:"pointer" }} onClick={() => handleStationClick(st)}>
+                      <circle cx={x} cy={y} r={major ? 7 : junction ? 6 : 4}
+                        fill={major?"#0B1F3A":junction?"#132D52":"#FFFFFF"}
+                        stroke={major?"#FF7A1A":junction?"#FF7A1A":"#0B1F3A"}
+                        strokeWidth={major?2:1.5}
+                      />
+                      {major && <circle cx={x} cy={y} r={3} fill="#FF7A1A" />}
+                      <text x={x} y={y-(major?13:10)} textAnchor="middle"
+                        fontSize={major?9:7.5} fontWeight={major?"600":"400"}
+                        fill={major?"#0B1F3A":"#506070"} fontFamily="IBM Plex Sans">
+                        {st.name}
+                      </text>
+                      <text x={x} y={y-(major?22:18)} textAnchor="middle"
+                        fontSize="7" fill="#B0BACA" fontFamily="IBM Plex Mono">
+                        {st.km}
+                      </text>
+                    </g>
+                  );
+                })}
+
+                {/* Selected station range highlight */}
+                {selectedRange && (
+                  <rect
+                    x={kmToX(selectedRange.kmStart)} y={lineY(selectedRange.line)-50}
+                    width={kmToX(selectedRange.kmEnd - selectedRange.kmStart)} height={100}
+                    fill="#0B1F3A" opacity={0.05} stroke="#0B1F3A" strokeWidth={1} strokeDasharray="4,3"
+                    style={{ pointerEvents:"none" }}
+                  />
+                )}
+              </svg>
+
+              {/* Zoom hint */}
+              <div style={{ position:"absolute", bottom:"8px", left:"12px", fontSize:"9.5px", color:"#A0AAB4", pointerEvents:"none" }}>
+                Scroll to zoom · drag to pan · click station → filter · click defect → detail
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT PANEL */}
+          <div style={{ width:"280px", flexShrink:0, background:"#FFFFFF", borderLeft:"1px solid #D8DCE3", display:"flex", flexDirection:"column", overflow:"hidden" }}>
+
+            {/* Legend */}
+            <div style={{ padding:"10px 14px", borderBottom:"1px solid #EAECEF" }}>
+              <div style={{ fontSize:"9.5px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:"8px" }}>Legend</div>
+              <div style={{ display:"flex", flexDirection:"column", gap:"5px" }}>
+                {[
+                  { color:"#C8102E", label:"IMR / IMRW — Active", large:true },
+                  { color:"#E5A100", label:"OBS → IMR predicted", large:false },
+                  { color:"#3A5BC7", label:"GCC", large:false },
+                  { color:"#506070", label:"Monitored", large:false },
+                ].map(l => (
+                  <div key={l.label} style={{ display:"flex", alignItems:"center", gap:"7px" }}>
+                    <svg width="16" height="16"><circle cx="8" cy="8" r={l.large?7:5} fill={l.color} opacity={0.9}/></svg>
+                    <span style={{ fontSize:"10.5px", color:"#3A4A5A" }}>{l.label}</span>
+                  </div>
+                ))}
+                <div style={{ marginTop:"4px", paddingTop:"4px", borderTop:"1px solid #F0F0F0", display:"flex", flexDirection:"column", gap:"5px" }}>
+                  {[
+                    { sym:"×", color:"#1A1A1A", label:"Fracture (last 90 days)" },
+                    { sym:"▲", color:"#0B1F3A", label:"Inspection run start" },
+                  ].map(l => (
+                    <div key={l.label} style={{ display:"flex", alignItems:"center", gap:"7px" }}>
+                      <span style={{ fontFamily:"var(--mono)", fontSize:"12px", color:l.color, width:"16px", textAlign:"center" }}>{l.sym}</span>
+                      <span style={{ fontSize:"10.5px", color:"#3A4A5A" }}>{l.label}</span>
+                    </div>
+                  ))}
+                  <div style={{ display:"flex", alignItems:"center", gap:"7px" }}>
+                    <svg width="16" height="10"><rect x="0" y="3" width="16" height="4" fill="none" stroke="#C8102E" strokeWidth="1.5"/></svg>
+                    <span style={{ fontSize:"10.5px", color:"#3A4A5A" }}>Cluster (4 m rule)</span>
+                  </div>
+                </div>
+                <div style={{ marginTop:"4px", paddingTop:"4px", borderTop:"1px solid #F0F0F0" }}>
+                  <div style={{ fontSize:"9.5px", color:"#8A95A3", marginBottom:"4px" }}>Dot size = predicted severity</div>
+                  <div style={{ display:"flex", alignItems:"center", gap:"8px" }}>
+                    <svg width="14" height="14"><circle cx="7" cy="7" r="7" fill="#C8102E" opacity="0.8"/></svg>
+                    <span style={{ fontSize:"9.5px", color:"#8A95A3" }}>IMR active / predicted</span>
+                  </div>
+                  <div style={{ display:"flex", alignItems:"center", gap:"8px", marginTop:"3px" }}>
+                    <svg width="11" height="11"><circle cx="5.5" cy="5.5" r="5.5" fill="#E5A100" opacity="0.8"/></svg>
+                    <span style={{ fontSize:"9.5px", color:"#8A95A3" }}>OBS predicted to escalate</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Section / defect panel */}
+            <div style={{ flex:1, overflowY:"auto", padding:"10px 14px" }}>
+              {selectedDefect ? (
+                <div>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"8px" }}>
+                    <div style={{ fontSize:"9.5px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.07em" }}>Selected defect</div>
+                    <button onClick={() => setSelectedDefect(null)} style={{ background:"none", border:"none", color:"#8A95A3", cursor:"pointer", fontSize:"14px" }}>×</button>
+                  </div>
+                  <div style={{ fontFamily:"var(--mono)", fontSize:"13px", fontWeight:600, color:"#0B1F3A" }}>KM {selectedDefect.km}</div>
+                  <div style={{ fontSize:"10.5px", color:"#5A6475", marginTop:"2px", marginBottom:"8px" }}>
+                    <span style={{ fontFamily:"var(--mono)" }}>{selectedDefect.uic}</span> · {selectedDefect.line === "main" ? "Main line" : selectedDefect.line === "kasara" ? "Kasara branch" : "Vasai branch"}
+                  </div>
+                  {[
+                    ["Current", selectedDefect.curr],
+                    ["Predicted", selectedDefect.pred],
+                    ["GMT to threshold", selectedDefect.gmtTT === 0 ? "BREACHED" : `${selectedDefect.gmtTT} GMT`],
+                    ["Side", selectedDefect.side === "up" ? "Up rail" : "Down rail"],
+                    ["Probe", selectedDefect.probe],
+                    ...(selectedDefect.cluster ? [["Cluster", selectedDefect.cluster]] : []),
+                  ].map(([k,v]) => (
+                    <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"4px 0", borderBottom:"1px solid #F5F5F5", fontSize:"10.5px" }}>
+                      <span style={{ color:"#8A95A3" }}>{k}</span>
+                      <span style={{ fontFamily:["GMT to threshold","Probe","Cluster"].includes(k)?"var(--mono)":"inherit", fontWeight:500, color: k==="GMT to threshold"&&v==="BREACHED"?"#C8102E":"#1A1A1A" }}>{v}</span>
+                    </div>
+                  ))}
+                  <button style={{ width:"100%", marginTop:"10px", padding:"7px", fontSize:"11px", fontWeight:600, background:"#0B1F3A", color:"#FFFFFF", border:"none", borderRadius:"3px", cursor:"pointer" }}>
+                    View Defect Detail →
+                  </button>
+                  <button style={{ width:"100%", marginTop:"5px", padding:"7px", fontSize:"11px", background:"#FFFFFF", color:"#0B1F3A", border:"1px solid #C0C8D4", borderRadius:"3px", cursor:"pointer" }}>
+                    Open in Priority Queue
+                  </button>
+                </div>
+              ) : selectedRange ? (
+                <div>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"8px" }}>
+                    <div style={{ fontSize:"9.5px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.07em" }}>Section filter</div>
+                    <button onClick={() => setSelectedRange(null)} style={{ background:"none", border:"none", color:"#8A95A3", cursor:"pointer", fontSize:"14px" }}>×</button>
+                  </div>
+                  <div style={{ fontFamily:"var(--mono)", fontSize:"11px", color:"#0B1F3A", marginBottom:"8px" }}>
+                    KM {selectedRange.kmStart}–{selectedRange.kmEnd}
+                  </div>
+                  {rangeDefects.length === 0 ? (
+                    <div style={{ fontSize:"10.5px", color:"#8A95A3" }}>No defects in this range.</div>
+                  ) : (
+                    rangeDefects.map(d => (
+                      <div key={d.id} style={{ padding:"6px 8px", marginBottom:"4px", background:"#F8F9FB", border:"1px solid #E5E5E5", borderRadius:"3px", cursor:"pointer" }}
+                        onClick={() => setSelectedDefect(d)}>
+                        <div style={{ display:"flex", justifyContent:"space-between" }}>
+                          <span style={{ fontFamily:"var(--mono)", fontSize:"10.5px", fontWeight:500, color:"#0B1F3A" }}>KM {d.km}</span>
+                          <span style={{ fontFamily:"var(--mono)", fontSize:"10px", fontWeight:600, color: defectColor(d.curr, d.pred) }}>{d.curr}</span>
+                        </div>
+                        <div style={{ fontSize:"9.5px", color:"#8A95A3", marginTop:"2px" }}>{d.uic} · {d.probe}</div>
+                      </div>
+                    ))
+                  )}
+                  {rangeDefects.length > 0 && (
+                    <button style={{ width:"100%", marginTop:"8px", padding:"7px", fontSize:"11px", fontWeight:600, background:"#0B1F3A", color:"#FFFFFF", border:"none", borderRadius:"3px", cursor:"pointer" }}>
+                      Open in Priority Queue ({rangeDefects.length})
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <div style={{ fontSize:"9.5px", color:"#8A95A3", textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:"8px" }}>Division summary</div>
+                  <div style={{ fontSize:"10.5px", color:"#5A6475", lineHeight:"1.6" }}>
+                    Click a station node to filter defects in that section.
+                    <br />Click any defect dot for details.
+                  </div>
+                  <div style={{ marginTop:"12px" }}>
+                    <div style={{ fontSize:"9.5px", color:"#8A95A3", marginBottom:"6px", textTransform:"uppercase", letterSpacing:"0.06em" }}>Defects by classification</div>
+                    {[
+                      { label:"IMR / IMRW", count: MAP_DEFECTS.filter(d=>d.curr==="IMR"||d.curr==="IMRW").length, color:"#C8102E" },
+                      { label:"OBS → IMR predicted", count: MAP_DEFECTS.filter(d=>(d.curr==="OBS"||d.curr==="OBSW")&&(d.pred==="IMR"||d.pred==="IMRW")).length, color:"#E5A100" },
+                      { label:"OBS / DFWR monitored", count: MAP_DEFECTS.filter(d=>(d.curr==="OBS"||d.curr==="DFWR"||d.curr==="DFWO")&&d.pred!=="IMR"&&d.pred!=="IMRW").length, color:"#506070" },
+                      { label:"GCC", count: MAP_DEFECTS.filter(d=>d.curr==="GCC").length, color:"#3A5BC7" },
+                    ].map(r => (
+                      <div key={r.label} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"4px 0", borderBottom:"1px solid #F5F5F5" }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:"6px" }}>
+                          <span style={{ width:"6px", height:"6px", borderRadius:"50%", background:r.color, display:"inline-block" }} />
+                          <span style={{ fontSize:"10.5px", color:"#3A4A5A" }}>{r.label}</span>
+                        </div>
+                        <span style={{ fontFamily:"var(--mono)", fontSize:"11px", fontWeight:600, color:r.color }}>{r.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ marginTop:"12px" }}>
+                    <div style={{ fontSize:"9.5px", color:"#8A95A3", marginBottom:"6px", textTransform:"uppercase", letterSpacing:"0.06em" }}>By line</div>
+                    {[
+                      { label:"Main line (CSMT–Pune)", count: MAP_DEFECTS.filter(d=>d.line==="main").length },
+                      { label:"Kasara branch", count: MAP_DEFECTS.filter(d=>d.line==="kasara").length },
+                      { label:"Vasai branch", count: MAP_DEFECTS.filter(d=>d.line==="vasai").length },
+                    ].map(r => (
+                      <div key={r.label} style={{ display:"flex", justifyContent:"space-between", padding:"4px 0", borderBottom:"1px solid #F5F5F5" }}>
+                        <span style={{ fontSize:"10.5px", color:"#3A4A5A" }}>{r.label}</span>
+                        <span style={{ fontFamily:"var(--mono)", fontSize:"11px", fontWeight:600, color:"#0B1F3A" }}>{r.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding:"6px 14px", borderTop:"1px solid #E5E5E5", background:"#F8F9FB", display:"flex", alignItems:"center", gap:"6px" }}>
+              <img src="assets/ir-emblem.svg" alt="IR" style={{ width:"16px", height:"16px", objectFit:"contain", opacity:0.5 }} />
+              <span style={{ fontSize:"9px", color:"#B0BACA" }}>Government of India · Ministry of Railways</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* TOOLTIP */}
+      {tooltip && (
+        <div className="tooltip" style={{ left: tooltip.x + 14, top: tooltip.y - 10 }}>
+          <div style={{ fontFamily:"var(--mono)", fontWeight:600, fontSize:"11.5px", marginBottom:"3px" }}>KM {tooltip.defect.km}</div>
+          <div style={{ fontFamily:"var(--mono)", fontSize:"10.5px", color:"#C8D8E8" }}>{tooltip.defect.uic}</div>
+          <div style={{ marginTop:"4px", display:"flex", gap:"8px" }}>
+            <span style={{ fontSize:"10px", background: defectColor(tooltip.defect.curr, tooltip.defect.pred)+"30", color: defectColor(tooltip.defect.curr, tooltip.defect.pred), padding:"1px 5px", borderRadius:"2px", fontFamily:"var(--mono)", fontWeight:600, border:`1px solid ${defectColor(tooltip.defect.curr, tooltip.defect.pred)}60` }}>{tooltip.defect.curr}</span>
+            {tooltip.defect.pred !== tooltip.defect.curr && <>
+              <span style={{ color:"#8A95A3" }}>→</span>
+              <span style={{ fontSize:"10px", background: defectColor(tooltip.defect.curr, tooltip.defect.pred)+"30", color: defectColor(tooltip.defect.curr, tooltip.defect.pred), padding:"1px 5px", borderRadius:"2px", fontFamily:"var(--mono)", fontWeight:600, border:`1px solid ${defectColor(tooltip.defect.curr, tooltip.defect.pred)}60` }}>{tooltip.defect.pred}</span>
+            </>}
+          </div>
+          <div style={{ marginTop:"3px", fontSize:"10px", color:"#A0B8C8" }}>
+            GMT to threshold: <span style={{ fontFamily:"var(--mono)", color: tooltip.defect.gmtTT === 0 ? "#FF6B6B" : "#FFFFFF" }}>{tooltip.defect.gmtTT === 0 ? "BREACHED" : `${tooltip.defect.gmtTT}`}</span>
+          </div>
+          <div style={{ fontSize:"9.5px", color:"#7090A8", marginTop:"2px" }}>
+            {tooltip.defect.probe} · {tooltip.defect.side === "up" ? "Up rail" : "Down rail"}
+            {tooltip.defect.cluster && <span style={{ marginLeft:"6px", color:"#FF9090" }}>Cluster {tooltip.defect.cluster}</span>}
+          </div>
+        </div>
+      )}
+
+      {/* Tweaks */}
+      {tweaksVisible && (
+        <TweaksPanel onClose={() => { setTweaksVisible(false); window.parent.postMessage({type:"__edit_mode_dismissed"}, "*"); }}>
+          <TweakSection title="Map display">
+            <TweakToggle label="Hindi labels" value={tweaks.showHindi} onChange={v => setTweak("showHindi", v)} />
+            <TweakSlider label="Defect dot scale" min={0.5} max={2.0} step={0.1} value={tweaks.dotScale} onChange={v => setTweak("dotScale", v)} />
+          </TweakSection>
+        </TweaksPanel>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+<script src="prototype-nav.js"></script>
+</body>
+</html>
