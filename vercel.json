@@ -12,12 +12,10 @@
     }
   ],
   "routes": [
-    { "src": "/api/(.*)",      "dest": "/api/index.py" },
-    { "src": "/docs",          "dest": "/api/index.py" },
-    { "src": "/openapi.json",  "dest": "/api/index.py" },
-    { "src": "/",              "dest": "/api/index.py" },
-    { "src": "/(.*\\.html)",   "dest": "/public/$1" },
-    { "src": "/assets/(.*)",   "dest": "/public/assets/$1" },
-    { "src": "/(.*)",          "dest": "/public/$1" }
+    { "src": "/api/(.*)",     "dest": "/api/index.py" },
+    { "src": "/docs",         "dest": "/api/index.py" },
+    { "src": "/openapi.json", "dest": "/api/index.py" },
+    { "src": "/",             "dest": "/public/index.html" },
+    { "src": "/(.*)",         "dest": "/public/$1" }
   ]
 }
