@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Aonami Echo — USFD Defect Growth Propagation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+Devanagari:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root { --navy: #0B1F3A; --navy-2: #13294B; --saffron: #FF7A1A; --saffron-2: #E66A0E; }
+html, body { min-height: 100%; background: #0B1F3A; color: #fff;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+.hi { font-family: 'Noto Sans Devanagari', 'Inter', sans-serif; }
+.mono { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
+.page { position: relative; min-height: 100vh; }
+.bg-bands {
+  position: fixed; inset: 0; z-index: 0; opacity: .18;
+  background-image:
+    radial-gradient(ellipse at top, rgba(255,122,26,.4), transparent 55%),
+    radial-gradient(circle at 80% 90%, rgba(31,122,77,.3), transparent 50%);
+}
+.bg-grid {
+  position: fixed; inset: 0; z-index: 0; opacity: .04;
+  background-image:
+    linear-gradient(rgba(255,255,255,.5) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.5) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.wrap { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: 48px 32px; }
+header.brand { display: flex; align-items: center; justify-content: space-between; margin-bottom: 48px; gap: 24px; }
+.brandmark { display: flex; align-items: center; gap: 14px; }
+.brandmark .logo-aonami { width: 48px; height: 48px; object-fit: contain; display: block; }
+.brand-right { display: flex; align-items: center; gap: 14px; }
+.brand-right-text { text-align: right; line-height: 1.45; }
+.brand-right .logo-ir { width: 56px; height: 56px; object-fit: contain; display: block; }
+.lede { font-size: 13px; color: rgba(255,255,255,.6); letter-spacing: .18em; font-weight: 600; text-transform: uppercase; }
+h1 { font-size: 44px; font-weight: 800; line-height: 1.05; margin: 0 0 12px; letter-spacing: -.02em; }
+h1 .accent { color: var(--saffron); }
+.subtitle { font-size: 17px; color: rgba(255,255,255,.7); max-width: 760px; line-height: 1.55; margin-bottom: 8px; }
+.subtitle .strong { color: #fff; font-weight: 600; }
+.meta-strip { margin-top: 24px; display: flex; gap: 32px; flex-wrap: wrap; font-size: 12px; color: rgba(255,255,255,.6); }
+.meta-strip strong { color: #fff; display: block; font-size: 18px; font-weight: 700; margin-bottom: 2px; font-family: 'JetBrains Mono', monospace; }
+.meta-strip .live { color: var(--saffron); }
+.grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; margin-top: 48px; }
+@media (max-width: 680px) { .grid { grid-template-columns: 1fr; } h1 { font-size: 30px; } .wrap { padding: 32px 20px; } }
+.card {
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 16px; padding: 24px;
+  text-decoration: none; color: #fff;
+  transition: all .18s; position: relative; overflow: hidden;
+  display: flex; flex-direction: column; gap: 14px; cursor: pointer;
+}
+.card:hover { background: rgba(255,255,255,.07); border-color: rgba(255,122,26,.5); transform: translateY(-2px); }
+.card .num { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: rgba(255,122,26,.85); letter-spacing: .12em; font-weight: 600; }
+.card h3 { font-size: 22px; font-weight: 700; margin: 0; letter-spacing: -.01em; }
+.card .who { font-size: 13px; color: rgba(255,255,255,.65); margin: 0; line-height: 1.5; }
+.card .flow { font-size: 11px; font-family: 'JetBrains Mono', monospace; color: rgba(255,255,255,.45); margin-top: auto; padding-top: 6px; border-top: 1px solid rgba(255,255,255,.08); }
+.card .device { font-size: 10px; color: rgba(255,255,255,.5); text-transform: uppercase; letter-spacing: .1em; font-weight: 600; }
+.card .arrow { position: absolute; top: 24px; right: 24px; width: 30px; height: 30px; border-radius: 99px; background: rgba(255,255,255,.06); display: flex; align-items: center; justify-content: center; transition: all .18s; }
+.card:hover .arrow { background: var(--saffron); transform: translateX(4px); }
+.card.featured { background: linear-gradient(135deg, rgba(255,122,26,.18), rgba(255,122,26,.04)); border-color: rgba(255,122,26,.35); }
+.card.model-card { background: linear-gradient(135deg, rgba(28,63,110,.35), rgba(11,31,58,.2)); border-color: rgba(255,122,26,.25); }
+.kpi-bar { display: flex; gap: 12px; margin-top: 28px; flex-wrap: wrap; }
+.kpi-pill { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); border-radius: 8px; padding: 10px 16px; display: flex; flex-direction: column; gap: 2px; min-width: 110px; }
+.kpi-pill .kv { font-family: 'JetBrains Mono', monospace; font-size: 22px; font-weight: 700; }
+.kpi-pill .kl { font-size: 10px; color: rgba(255,255,255,.5); text-transform: uppercase; letter-spacing: .07em; }
+.kpi-pill.red   { border-color: rgba(200,16,46,.4);  } .kpi-pill.red   .kv { color: #FF6B7A; }
+.kpi-pill.amber { border-color: rgba(229,161,0,.4);  } .kpi-pill.amber .kv { color: #FFD166; }
+.kpi-pill.green { border-color: rgba(31,122,77,.4);  } .kpi-pill.green .kv { color: #5DCEA0; }
+.kpi-pill.saf   { border-color: rgba(255,122,26,.4); } .kpi-pill.saf   .kv { color: #FF7A1A; }
+footer.foot { margin-top: 64px; padding-top: 24px; border-top: 1px solid rgba(255,255,255,.08); font-size: 11px; color: rgba(255,255,255,.45); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+footer.foot a { color: rgba(255,255,255,.7); text-decoration: none; border-bottom: 1px dashed rgba(255,255,255,.3); }
+footer.foot a:hover { color: var(--saffron); border-bottom-color: var(--saffron); }
+::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="bg-bands"></div>
+  <div class="bg-grid"></div>
+  <div class="wrap">
+
+    <header class="brand">
+      <div class="brandmark">
+        <img src="assets/aonami-white.png" alt="Aonami" class="logo-aonami"
+             onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
+        <span style="display:none;width:48px;height:48px;background:rgba(255,122,26,.2);border-radius:8px;align-items:center;justify-content:center;font-size:22px;color:#FF7A1A;font-weight:800;">⌁</span>
+        <div>
+          <div class="lede">Aonami Echo</div>
+          <div class="hi" style="font-size:13px;color:rgba(255,255,255,.55);margin-top:2px;">
+            इको · रेल/वेल्ड दोष विकास विश्लेषण
+          </div>
+        </div>
+      </div>
+      <div class="brand-right">
+        <div class="brand-right-text">
+          <div style="font-size:10px;color:rgba(255,255,255,.5);letter-spacing:.04em;">Submitted to</div>
+          <div style="font-size:12px;color:#fff;font-weight:600;letter-spacing:.06em;margin-top:2px;">INDIAN RAILWAYS</div>
+          <div style="font-size:10px;color:var(--saffron);font-weight:600;letter-spacing:.08em;margin-top:2px;">RAILTECH PORTAL</div>
+          <div class="mono" style="color:rgba(255,255,255,.35);font-size:10px;margin-top:4px;">IC0000000177</div>
+        </div>
+        <img src="assets/ir-emblem.svg" alt="Indian Railways" class="logo-ir"
+             onerror="this.style.display='none'" />
+      </div>
+    </header>
+
+    <h1>Predictive <span class="accent">USFD</span>.<br />
+      Run-on-run defect tracking, growth modelling, Para 6.3.2 escalation.</h1>
+    <p class="subtitle">
+      <span class="strong">Aonami Echo</span> sits above the existing USFD inspection stack — links every run,
+      tracks every defect over time, and predicts when each will cross IMR per Annexure II-A.
+      <span class="strong">No replacement of operators, machines or workflow.</span>
+      A platform layer with nine screens walkable in 7 minutes.
+    </p>
+
+    <div class="meta-strip">
+      <div><strong>1.1 L km</strong>tested per year (2024-25)</div>
+      <div><strong>~12 K</strong>IMR/IMRW per year</div>
+      <div><strong>~500</strong>reportable fractures per year</div>
+      <div><strong>±3 m</strong>chainage drift handled</div>
+    </div>
+
+    <!-- Live KPI bar from API -->
+    <div class="kpi-bar" id="kpi-bar">
+      <div class="kpi-pill" style="opacity:.5"><div class="kv">—</div><div class="kl">loading…</div></div>
+    </div>
+
+    <div class="grid" id="grid">
+      <!-- cards injected by JS -->
+    </div>
+
+    <footer class="foot">
+      <div>Authorised personnel only · Government of India · Ministry of Railways</div>
+      <div>Aonami Technologies · <a href="mailto:info@aonamitech.com">info@aonamitech.com</a></div>
+    </footer>
+  </div>
+</div>
+
+<script>
+const PAGES = [
+  { num:'01', href:'Login.html',                  device:'Sign-in',             title:'Login',
+    blurb:'HRMS-authenticated entry. Pick a division and it persists across screens.',
+    flow:'Auth → Division → Queue', featured:true },
+  { num:'02', href:'Priority Queue.html',          device:'Sr DEN morning view', title:'Priority Queue',
+    blurb:'The dashboard a Sr DEN opens every morning. Active IMR · Predicted-to-escalate · OBS watchlist. Cluster pip auto-flagged.',
+    flow:'Open → Triage → Drill into defect' },
+  { num:'03', href:'Defect Detail.html',           device:'Run-on-run growth',   title:'Defect Detail',
+    blurb:'Amplitude vs cumulative GMT — the proof. RDSO Annexure II-A thresholds at 30/60/80%FSH. Projected breach band shows when the defect crosses IMR.',
+    flow:'Plot → SLA card → Annexure III' },
+  { num:'04', href:'Cluster View.html',            device:'Para 6.3.2 escalation',title:'Cluster View',
+    blurb:'Defects within 4 m → one work order. Saffron window auto-detects the cluster. Single Annexure III covers all members.',
+    flow:'Schematic → Trigger → Export' },
+  { num:'05', href:'Track Map.html',               device:'Spatial heatmap',     title:'Track Map',
+    blurb:'Division spatial heatmap and inspection runs. Live chainage strip overlays real section data — click any defect dot to drill.',
+    flow:'Map → Hotspot → Drill' },
+  { num:'06', href:'Annexure III Form.html',       device:'RDSO paperwork',      title:'Annexure III Form',
+    blurb:'80% auto-filled from system — KM & TP, GMT band, rail section, rolling mark. Only cause-of-fracture and date-of-removal need a human.',
+    flow:'Pre-fill → Review → Export' },
+  { num:'07', href:'Inspection Run Import.html',   device:'AEN test-check wizard',title:'Inspection Run Import',
+    blurb:'5-step wizard mirroring AEN test-check (Annexure V). Vendor adapters for ECIL, Vibronics, EEC, Paras inspection trolleys.',
+    flow:'Upload → Map → Validate → Ingest → Confirm' },
+  { num:'08', href:'Zone Rollup.html',             device:'PCE quarterly review', title:'Zone Rollup',
+    blurb:'Executive view aggregating railways to zone level. PCE-ready summary of near-IMR queue, SLA breaches, amplitude bands.',
+    flow:'Aggregate → Trend → Decision' },
+  { num:'09', href:'Model.html',                   device:'Data science layer',   title:'Growth Models',
+    blurb:'Paris–Erdogan power-law curves per defect family. Fleet RUL distribution. HistGBM scorecard. RDSO triage rules. Honest caveats.',
+    flow:'Families → RUL → Scorecard → Rules', model:true },
+];
+
+// Render card grid
+const grid = document.getElementById('grid');
+PAGES.forEach(p => {
+  const cls = 'card' + (p.featured ? ' featured' : '') + (p.model ? ' model-card' : '');
+  grid.insertAdjacentHTML('beforeend', `
+    <a class="${cls}" href="${p.href}">
+      <div class="device">${p.device}</div>
+      <div class="num">${p.num} · DESKTOP</div>
+      <h3>${p.title}</h3>
+      <p class="who">${p.blurb}</p>
+      <div class="flow">${p.flow}</div>
+      <span class="arrow">→</span>
+    </a>
+  `);
+});
+
+// Load live KPIs from API
+fetch('/api/stats')
+  .then(r => r.json())
+  .then(d => {
+    const bl = d.by_level || {};
+    const kpis = [
+      { v: (d.defects||0).toLocaleString(), l:'Defects tracked',      cls:'' },
+      { v: (bl.IMMEDIATE||0),              l:'IMMEDIATE',             cls:'red' },
+      { v: (bl.URGENT||0),                l:'URGENT',                cls:'amber' },
+      { v: (d.near_imr||0),               l:'Near-IMR ≥80%FSH',     cls:'red' },
+      { v: (d.clusters||0),               l:'4 m clusters',          cls:'saf' },
+      { v: (d.sla_breaches||0),           l:'SLA breaches',          cls:'red' },
+      { v: (d.unique_railways||9),        l:'Railways',              cls:'green' },
+      { v: (d.inspections||0).toLocaleString(), l:'Inspections',     cls:'' },
+    ];
+    document.getElementById('kpi-bar').innerHTML = kpis
+      .map(k => `<div class="kpi-pill ${k.cls}"><div class="kv">${k.v}</div><div class="kl">${k.l}</div></div>`)
+      .join('');
+  })
+  .catch(() => {
+    document.getElementById('kpi-bar').innerHTML =
+      '<div class="kpi-pill"><div class="kv" style="font-size:13px;color:rgba(255,255,255,.4)">API offline — open any screen directly</div></div>';
+  });
+</script>
+</body>
+</html>

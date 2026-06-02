@@ -252,7 +252,10 @@ def build_defect_ui(tq: dict, hist: list, pred: dict | None) -> dict:
 
 @app.get("/")
 def home():
-    return RedirectResponse(url="/app/Priority Queue.html")
+    p = os.path.join(PUB, "index.html")
+    if os.path.exists(p):
+        return FileResponse(p, media_type="text/html")
+    return RedirectResponse(url="/app/Priority%20Queue.html")
 
 @app.get("/legacy")
 def legacy_ui():

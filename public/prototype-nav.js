@@ -1,4 +1,4 @@
-/* prototype-nav.js — stitches the eight static HTMLs into one demo app.
+/* prototype-nav.js — stitches the nine static HTMLs into one demo app.
    Listens in BUBBLE phase so existing React onClick handlers (filters,
    tweaks, side panel, modals, print) keep working. We only navigate when
    the click is structurally identifiable — sidebar items, specific named
@@ -13,6 +13,7 @@
     Import:  'Inspection Run Import.html',
     Annex:   'Annexure III Form.html',
     Zone:    'Zone Rollup.html',
+    Model:   'Model.html',
   };
   const LABELS = Object.keys(NAV);
 
@@ -100,11 +101,12 @@
     const a = e.target.closest('a[href="#"], a:not([href])');
     if (a) {
       const t = (a.textContent || '').trim();
-      if (/View\s*cluster/i.test(t))           { e.preventDefault(); return go(NAV.Cluster); }
-      if (/Open\s*full\s*view/i.test(t))       { e.preventDefault(); return go(NAV.Defect); }
-      if (/Open\s*Cluster\s*View/i.test(t))    { e.preventDefault(); return go(NAV.Cluster); }
-      if (/Open\s*in\s*Priority\s*Queue/i.test(t)) { e.preventDefault(); return go(NAV.Queue); }
-      if (/Open\s*Defect\s*Detail/i.test(t))   { e.preventDefault(); return go(NAV.Defect); }
+      if (/View\s*cluster/i.test(t))                  { e.preventDefault(); return go(NAV.Cluster); }
+      if (/Open\s*full\s*view/i.test(t))             { e.preventDefault(); return go(NAV.Defect); }
+      if (/Open\s*Cluster\s*View/i.test(t))          { e.preventDefault(); return go(NAV.Cluster); }
+      if (/Open\s*in\s*Priority\s*Queue/i.test(t))   { e.preventDefault(); return go(NAV.Queue); }
+      if (/Open\s*Defect\s*Detail/i.test(t))         { e.preventDefault(); return go(NAV.Defect); }
+      if (/Growth\s*Model|Model\s*scorecard/i.test(t)) { e.preventDefault(); return go(NAV.Model); }
     }
 
     // We do NOT intercept row clicks, filter toggles, modal closes, print
