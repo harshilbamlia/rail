@@ -664,7 +664,7 @@ async def import_file(file: UploadFile = File(...)):
         tmp.write(content); tmp_path = tmp.name
     try:
         import sys
-        sys.path.insert(0, ROOT)
+        sys.path.insert(0, os.path.join(ROOT, "ds"))
         from parse_usfd import parse_file
         df = parse_file(tmp_path)
         n = len(df)

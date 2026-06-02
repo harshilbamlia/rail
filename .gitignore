@@ -5,24 +5,19 @@ __pycache__/
 .venv/
 *.egg-info/
 
-# Raw data files (large, not needed by Vercel)
-Data run on run/
-usfd_long.csv
-usfd_clean.csv
-usfd_defects.csv
-usfd_ingest_summary.md
-EDA_STEP1.md
-EDA_STEP2.md
-DATA_PROFILE_raw.md
-MATCHING_VALIDATION.md
-MODEL_STEP3.md
-TRIAGE_STEP4.md
-plots/
-*.pptx
-*.orig
+# Data science folder — scripts, raw data, outputs, reports (local only)
+ds/
+
+# Prototype old version (local reference only)
+prototype-echo-app_old/
+
+# Temp Excel lock files
+~$*.xlsx
+~$*.xls
 
 # OS
 .DS_Store
+**/.DS_Store
 
 # Notebooks / IDE
 .ipynb_checkpoints/

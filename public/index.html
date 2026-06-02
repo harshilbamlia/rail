@@ -85,7 +85,7 @@ footer.foot a:hover { color: var(--saffron); border-bottom-color: var(--saffron)
 
     <header class="brand">
       <div class="brandmark">
-        <img src="assets/aonami-white.png" alt="Aonami" class="logo-aonami"
+        <img src="/app/assets/aonami-white.png" alt="Aonami" class="logo-aonami"
              onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
         <span style="display:none;width:48px;height:48px;background:rgba(255,122,26,.2);border-radius:8px;align-items:center;justify-content:center;font-size:22px;color:#FF7A1A;font-weight:800;">⌁</span>
         <div>
@@ -102,7 +102,7 @@ footer.foot a:hover { color: var(--saffron); border-bottom-color: var(--saffron)
           <div style="font-size:10px;color:var(--saffron);font-weight:600;letter-spacing:.08em;margin-top:2px;">RAILTECH PORTAL</div>
           <div class="mono" style="color:rgba(255,255,255,.35);font-size:10px;margin-top:4px;">IC0000000177</div>
         </div>
-        <img src="assets/ir-emblem.svg" alt="Indian Railways" class="logo-ir"
+        <img src="/app/assets/ir-emblem.svg" alt="Indian Railways" class="logo-ir"
              onerror="this.style.display='none'" />
       </div>
     </header>
@@ -141,31 +141,31 @@ footer.foot a:hover { color: var(--saffron); border-bottom-color: var(--saffron)
 
 <script>
 const PAGES = [
-  { num:'01', href:'Login.html',                  device:'Sign-in',             title:'Login',
+  { num:'01', href:'/app/Login.html',                  device:'Sign-in',             title:'Login',
     blurb:'HRMS-authenticated entry. Pick a division and it persists across screens.',
     flow:'Auth → Division → Queue', featured:true },
-  { num:'02', href:'Priority Queue.html',          device:'Sr DEN morning view', title:'Priority Queue',
+  { num:'02', href:'/app/Priority Queue.html',          device:'Sr DEN morning view', title:'Priority Queue',
     blurb:'The dashboard a Sr DEN opens every morning. Active IMR · Predicted-to-escalate · OBS watchlist. Cluster pip auto-flagged.',
     flow:'Open → Triage → Drill into defect' },
-  { num:'03', href:'Defect Detail.html',           device:'Run-on-run growth',   title:'Defect Detail',
+  { num:'03', href:'/app/Defect Detail.html',           device:'Run-on-run growth',   title:'Defect Detail',
     blurb:'Amplitude vs cumulative GMT — the proof. RDSO Annexure II-A thresholds at 30/60/80%FSH. Projected breach band shows when the defect crosses IMR.',
     flow:'Plot → SLA card → Annexure III' },
-  { num:'04', href:'Cluster View.html',            device:'Para 6.3.2 escalation',title:'Cluster View',
+  { num:'04', href:'/app/Cluster View.html',            device:'Para 6.3.2 escalation',title:'Cluster View',
     blurb:'Defects within 4 m → one work order. Saffron window auto-detects the cluster. Single Annexure III covers all members.',
     flow:'Schematic → Trigger → Export' },
-  { num:'05', href:'Track Map.html',               device:'Spatial heatmap',     title:'Track Map',
+  { num:'05', href:'/app/Track Map.html',               device:'Spatial heatmap',     title:'Track Map',
     blurb:'Division spatial heatmap and inspection runs. Live chainage strip overlays real section data — click any defect dot to drill.',
     flow:'Map → Hotspot → Drill' },
-  { num:'06', href:'Annexure III Form.html',       device:'RDSO paperwork',      title:'Annexure III Form',
+  { num:'06', href:'/app/Annexure III Form.html',       device:'RDSO paperwork',      title:'Annexure III Form',
     blurb:'80% auto-filled from system — KM & TP, GMT band, rail section, rolling mark. Only cause-of-fracture and date-of-removal need a human.',
     flow:'Pre-fill → Review → Export' },
-  { num:'07', href:'Inspection Run Import.html',   device:'AEN test-check wizard',title:'Inspection Run Import',
+  { num:'07', href:'/app/Inspection Run Import.html',   device:'AEN test-check wizard',title:'Inspection Run Import',
     blurb:'5-step wizard mirroring AEN test-check (Annexure V). Vendor adapters for ECIL, Vibronics, EEC, Paras inspection trolleys.',
     flow:'Upload → Map → Validate → Ingest → Confirm' },
-  { num:'08', href:'Zone Rollup.html',             device:'PCE quarterly review', title:'Zone Rollup',
+  { num:'08', href:'/app/Zone Rollup.html',             device:'PCE quarterly review', title:'Zone Rollup',
     blurb:'Executive view aggregating railways to zone level. PCE-ready summary of near-IMR queue, SLA breaches, amplitude bands.',
     flow:'Aggregate → Trend → Decision' },
-  { num:'09', href:'Model.html',                   device:'Data science layer',   title:'Growth Models',
+  { num:'09', href:'/app/Model.html',                   device:'Data science layer',   title:'Growth Models',
     blurb:'Paris–Erdogan power-law curves per defect family. Fleet RUL distribution. HistGBM scorecard. RDSO triage rules. Honest caveats.',
     flow:'Families → RUL → Scorecard → Rules', model:true },
 ];
