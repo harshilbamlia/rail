@@ -255,18 +255,35 @@ def home():
     p = os.path.join(PUB, "index.html")
     if os.path.exists(p):
         return FileResponse(p, media_type="text/html")
-    return RedirectResponse(url="/app/Priority%20Queue.html")
+    p2 = os.path.join(PUB, "Priority Queue.html")
+    return FileResponse(p2, media_type="text/html")
 
-@app.get("/legacy")
-def legacy_ui():
-    p = os.path.join(ROOT, "app_ui.html")
-    if not os.path.exists(p):
-        raise HTTPException(404, "app_ui.html missing")
-    return FileResponse(p)
-
-# Mount prototype public folder at /app/
+# Mount at /app/ for backward compat
 if os.path.isdir(PUB):
     app.mount("/app", StaticFiles(directory=PUB), name="prototype")
+
+# Explicit routes for each screen at root level — identical to Vercel paths.
+# This avoids any catch-all vs API route conflict.
+_SCREENS = [
+    "Priority Queue", "Defect Detail", "Track Map", "Zone Rollup",
+    "Model", "Cluster View", "Annexure III Form", "Inspection Run Import",
+    "Login", "Live",
+]
+for _s in _SCREENS:
+    _fp = os.path.join(PUB, f"{_s}.html")
+    if os.path.exists(_fp):
+        # Closure captures the correct filepath
+        def _make_handler(fp):
+            async def _h():
+                return FileResponse(fp)
+            return _h
+        app.add_api_route(f"/{_s}.html", _make_handler(_fp),
+                          methods=["GET"], include_in_schema=False)
+
+# Serve assets/ at root level (/assets/*)
+if os.path.isdir(os.path.join(PUB, "assets")):
+    app.mount("/assets", StaticFiles(directory=os.path.join(PUB, "assets")),
+              name="assets")
 
 # ───────────────────────────── stats / zones ──────────────────────────────
 
