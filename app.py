@@ -665,7 +665,12 @@ async def import_file(file: UploadFile = File(...)):
     try:
         import sys
         sys.path.insert(0, os.path.join(ROOT, "ds"))
-        from parse_usfd import parse_file
+        try:
+            from parse_usfd import parse_file
+        except ImportError:
+            return {"filename": file.filename, "rows_parsed": 0, "sample": [],
+                    "errors": ["XLS parser not available in this environment"],
+                    "status": "unavailable"}
         df = parse_file(tmp_path)
         n = len(df)
         sample = df.head(20).to_dict(orient="records") if n else []
